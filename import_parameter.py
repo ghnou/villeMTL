@@ -1,33 +1,25 @@
 """Cette """
 import xlrd
 import numpy as np
+import math
 
-
+__FILES_NAME__ = 'ville_MTL_templates.xlsx'
 __BATIMENT__ = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9']
+__SECTEUR__ = ['Secteur 1', 'Secteur 2', 'Secteur 3', 'Secteur 4', 'Secteur 5', 'Secteur 6', 'Secteur 7']
+__UNITE_TYPE__ = ['Studios', '1cc', '2cc', '3cc', 'Penthouse', '2cc fam', '3cc fam']
 __COUT_SHEET__ = 'Cout'
 __PRIX_SHEET__ = 'Prix'
 
-def get_price_parameter(myBook):
+def get_house_price(batim, secteur, myBook):
     """Cette fonction est utilise pour creer une table contenant les prix des batiments par secteur
     :parameter: myBook Table de donnees contenant tous les parametres.
     :return DataFrame de prix par batiment et par secteur"""
 
-    sh = myBook.sheet_by_name('Prix')
-
-    table_of_price = []
-
-    for pos in range(2, sh.nrows):
-
-        if pos % 9 == 2:
-            type = sh.cell(pos, 1).value
-        else:
-            secteur = sh.cell(pos, 1).value
-
-            if secteur != '':
-                for col in range(2, 11):
-                    table_of_price.append([type, secteur, __BATIMENT__[col -2], sh.cell(pos, col).value])
-
-    return ['type proprio', 'sector', 'batiment', 'prix'], table_of_price
+    tab = []
+    for nu in range(len(__UNITE_TYPE__)):
+        pr = myBook.sheet_by_name('Prix').cell(3 + 9*nu + __SECTEUR__.index(secteur), 2 + __BATIMENT__.index(batim)).value
+        tab.append([__UNITE_TYPE__[nu], pr])
+    return tab
 
 
 def get_building_cost_parameter(myBook):
@@ -49,7 +41,7 @@ def get_building_cost_parameter(myBook):
                 entete.append(sh.cell(line, 2).value)
         tab_cost.append(tab)
 
-
+    print(entete)
     __SOFT_COST__ = 52
 
     for col in range(4, 13):
@@ -78,7 +70,7 @@ def get_building_cost_parameter(myBook):
         quality = [__QUALITE_BATIMENT__[line - __COUT_ADDITIONNEL__ - 2]]
 
         for col in range(4, 9):
-            value = sh.cell(line, col).value
+            value = sh.cell(line, col).value + sh.cell(73, col).value
             value = 0 if value == '' else value
             quality.append(value)
             if line == __COUT_ADDITIONNEL__ + 2:
@@ -91,11 +83,12 @@ def get_building_cost_parameter(myBook):
 
 
 def get_land_param(myBook):
+
     sh = myBook.sheet_by_name(__COUT_SHEET__)
 
     __VALEUR_PROX__ = 4
     tab_land_param = []
-    entete = ['Secteur', 'Batiment', 'valeur prox', 'multi de densite', 'aug  valeur', 'mutation',
+    entete = ['Secteur', 'Batiment', 'valeur prox', 'multi de densite', 'aug valeur', 'mutation',
               'cout add']
 
     for line in range(__VALEUR_PROX__, __VALEUR_PROX__ + 7):
@@ -126,10 +119,17 @@ def get_land_param(myBook):
 
     return entete, tab_land_param
 
+def get_nombre_unite(batim, secteur, myBook):
 
+    tab = []
+    for nu in range(len(__UNITE_TYPE__)):
+        nbu = myBook.sheet_by_name('Intrants').cell(166 + 9*nu + __SECTEUR__.index(secteur), 3 + __BATIMENT__.index(batim)).value
+        nbuecoul = myBook.sheet_by_name('Ecoulement').cell(4 + 9*nu + __SECTEUR__.index(secteur), 2 + __BATIMENT__.index(batim)).value
+        tab.append([__UNITE_TYPE__[nu], nbu, nbuecoul, math.ceil(nbu/nbuecoul)])
+    return tab
 if __name__ == '__main__':
 
     myBook = xlrd.open_workbook('ville_MTL_templates.xlsx')
     # print(get_price_parameter(myBook))
     # get_building_cost_parameter(myBook)
-    get_land_param(myBook)
+    print(get_land_param(myBook))
