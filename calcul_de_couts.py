@@ -1,131 +1,333 @@
+from obtention_intrant import get_global_intrant
+
 __author__ = 'pougomg'
 import xlrd
 import pandas as pd
 import numpy as np
-from import_parameter import __FILES_NAME__,__BATIMENT__, __SECTEUR__, get_land_param, get_building_cost_parameter
+from lexique import __UNITE_TYPE__, __QUALITE_BATIMENT__
+from import_parameter import __FILES_NAME__, __BATIMENT__, __SECTEUR__, get_land_param, get_building_cost_parameter
 
 
-def Calcul_prix_terrain(batim, secteur, ensemble, myBook):
+def ajouter_caraterisque_par_type_unite(sh, tab, name, pos, unique):
+    for unite in __UNITE_TYPE__:
+        _ = [unite, 'ALL', name]
+        line = pos[0] if unique else __UNITE_TYPE__.index(unite) + pos[0]
+        for batiment in range(len(__BATIMENT__)):
+            value = sh.cell(line, pos[1] + batiment).value
+            value = 0 if value == "" else value
+            _.append(value)
+        tab.append(_)
+    return tab
+
+
+def calcul_prix_terrain(densite, superficie):
 
     terrain_param = get_land_param(myBook)
-    entete = terrain_param[0]
-    terrain_param = terrain_param[1]
-    terrain_param = pd.DataFrame(terrain_param, columns=entete)
-    terrain_param = terrain_param[(terrain_param['Secteur'] == secteur) & (terrain_param['Batiment'] == batim)]
 
-    __DENSITE__ = [55, 3]
-    ligne_pos =  __SECTEUR__.index(secteur)
-    ligne_pos = ligne_pos - 1 if ligne_pos > 0 else ligne_pos
-    densite = myBook.sheet_by_name('Intrants').cell(__DENSITE__[0] + ligne_pos ,
-                                                    __DENSITE__[1] + __BATIMENT__.index(batim)).value
+    augmentation_valeur = (
+                1 + terrain_param[terrain_param['Value'] == 'aug valeur'][__BATIMENT__].reset_index(drop=True)).astype(
+        float)
 
-    __SUP__ = [28, 3]
-    superficie = myBook.sheet_by_name('Intrants').cell(__SUP__[0] + __SECTEUR__.index(secteur),
-                                                    __SUP__[1] + __BATIMENT__.index(batim)).value
+    value = (terrain_param[terrain_param['Value'] == 'valeur prox'][__BATIMENT__].reset_index(drop=True) +
+             terrain_param[terrain_param['Value'] == 'multi de densite'][__BATIMENT__].reset_index(
+                 drop=True) * densite).astype(float)
+
+    mutation = terrain_param[terrain_param['Value'] == 'mutation'][__BATIMENT__].reset_index(drop=True).astype(float)
+
+    prix = np.exp(value) * augmentation_valeur * superficie + mutation
+    print(prix)
+
+    # print(prix)
 
 
-    terrain_param['cout'] = (1 + terrain_param['aug valeur'])*np.exp(terrain_param['valeur prox'] +
-                                                                     terrain_param['multi de densite']*densite)*superficie + terrain_param['mutation']
-    terrain_param = terrain_param.reset_index()
-    return terrain_param['cout'].values
-
-def Calcul_cout_batiment(batim, secteur, ensemble, quality, myBook):
+def calcul_cout_batiment(table_of_intrant, myBook):
 
     cost_param = get_building_cost_parameter(myBook)
-    entete = cost_param[0]
-    cost_param = pd.DataFrame(cost_param[1], columns=entete)
-    cost_param = cost_param[(cost_param["Batiment"] == batim) & (cost_param["quality"] == quality)].reset_index()
-    print(cost_param)
+    cout_result = pd.DataFrame([], columns=cost_param.columns)
 
-    tab_of_mesure = []
-    __SUP_HS__ = [400, 3]
-    sup_hs = myBook.sheet_by_name('Intrants').cell(__SUP_HS__[0] + __SECTEUR__.index(secteur) ,
-                                                    __SUP_HS__[1] + __BATIMENT__.index(batim)).value
-    tab_of_mesure.append(sup_hs)
+    # Terrain
 
-    __SUP_TU__ = [355, 3]
-    sup_tu = myBook.sheet_by_name('Intrants').cell(__SUP_TU__[0] + __SECTEUR__.index(secteur) ,
-                                                    __SUP_TU__[1] + __BATIMENT__.index(batim)).value
-    tab_of_mesure.append(sup_tu)
+    den = table_of_intrant[(table_of_intrant['Value'] == 'denm_pu') & (table_of_intrant['Categorie'] == 'ALL')][
+        __BATIMENT__].reset_index(drop=True)
+    suft = table_of_intrant[(table_of_intrant['Value'] == 'supterrain') & (table_of_intrant['Categorie'] == 'ALL')][
+        __BATIMENT__].reset_index(drop=True)
+    calcul_prix_terrain(den, suft)
+    # Travaux coquille
 
-    __SallE__ = [[193, 3], [202, 3], [211, 3], [220, 3]]
-    sup_ea = 0
+    tc = cost_param[(cost_param['Value'] == 'tcq') & (cost_param['Categorie'] == 'ALL')].reset_index(drop=True)
 
-    for value in __SallE__:
-        sup_ea += myBook.sheet_by_name('Intrants').cell(value[0] + __SECTEUR__.index(secteur) ,
-                                                    value[1] + __BATIMENT__.index(batim)).value
+    supths = table_of_intrant[(table_of_intrant['Value'] == 'supths') & (table_of_intrant['Categorie'] == 'ALL')][
+        __BATIMENT__].reset_index(drop=True)
 
-    tab_of_mesure.append(sup_ea)
+    result = tc[__BATIMENT__] * supths
+    result[['Secteur', 'Categorie', 'Value']] = tc[['Secteur', 'Categorie', 'Value']]
+    result = result[cost_param.columns]
 
-    __SallGC__ = [[193, 3], [202, 3], [211, 3], [220, 3]]
-    sup_gc = 0
+    cout_result = result
 
-    for value in __SallGC__:
-        sup_gc += myBook.sheet_by_name('Intrants').cell(value[0] + __SECTEUR__.index(secteur) ,
-                                                    value[1] + __BATIMENT__.index(batim)).value
+    # Travaux finitions des unites
 
-    tab_of_mesure.append(sup_gc)
+    tc = cost_param[(cost_param['Value'] == 'tfu') & (cost_param['Categorie'] == 'ALL')].reset_index(drop=True)
 
-    sup_ac = myBook.sheet_by_name('Intrants').cell(364+ __SECTEUR__.index(secteur) ,
-                                                    3 + __BATIMENT__.index(batim)).value * myBook.sheet_by_name('Intrants').cell(114 ,3 + __BATIMENT__.index(batim)).value
+    suptu = table_of_intrant[(table_of_intrant['Value'] == 'suptu') & (table_of_intrant['Categorie'] == 'ALL')][
+        __BATIMENT__].reset_index(drop=True)
 
-    sup_ac += myBook.sheet_by_name('Intrants').cell(391+ __SECTEUR__.index(secteur) ,
-                                                    3 + __BATIMENT__.index(batim)).value * myBook.sheet_by_name('Intrants').cell(114 ,3 + __BATIMENT__.index(batim)).value
+    result = tc[__BATIMENT__] * suptu
+    result[['Secteur', 'Categorie', 'Value']] = tc[['Secteur', 'Categorie', 'Value']]
+    result = result[cost_param.columns]
+    cout_result = cout_result.append(result)
 
-    tab_of_mesure.append(sup_ac)
-    tab_of_mesure.append(1)
+    # cout additionnel salle d'eau, cuisine
 
-    if myBook.sheet_by_name('Intrants').cell(123 ,3 + __BATIMENT__.index(batim)).value == 'Non':
-        tab_of_mesure.append(0)
-    else:
-        tab_of_mesure.append(1)
+    suptu = table_of_intrant[
+        (table_of_intrant['Value'] == 'ntu') & (table_of_intrant['Categorie'].isin(__UNITE_TYPE__[3:]))].reset_index(
+        drop=True)
 
-    if myBook.sheet_by_name('Intrants').cell(120, 3 + __BATIMENT__.index(batim)).value == 'Non':
-        tab_of_mesure.append(0)
-    else:
-        tab_of_mesure.append(1)
+    suptu = suptu[__BATIMENT__].groupby(suptu['Secteur']).sum().reset_index()
+    tc = cost_param[(cost_param['Value'] == 'ca_se') & (cost_param['Categorie'] == 'ALL')].reset_index(drop=True)
 
+    result = tc[__BATIMENT__] * suptu
+    result[['Secteur', 'Categorie', 'Value']] = tc[['Secteur', 'Categorie', 'Value']]
+    result = result[cost_param.columns]
+    cout_result = cout_result.append(result)
 
-    cad_esp_com = myBook.sheet_by_name('Intrants').cell(391+ __SECTEUR__.index(secteur) ,
-                                                    3 + __BATIMENT__.index(batim)).value *(1- myBook.sheet_by_name('Intrants').cell(114 ,3 + __BATIMENT__.index(batim)).value)
+    tc = cost_param[(cost_param['Value'] == 'ca_gc') & (cost_param['Categorie'] == 'ALL')].reset_index(drop=True)
 
+    result = tc[__BATIMENT__] * suptu
+    result[['Secteur', 'Categorie', 'Value']] = tc[['Secteur', 'Categorie', 'Value']]
+    result = result[cost_param.columns]
+    cout_result = cout_result.append(result)
 
-    tab_of_mesure.append(cad_esp_com)
+    # Finition aire commune
 
-    tab_of_mesure.append( myBook.sheet_by_name('Intrants').cell(292 + __SECTEUR__.index(secteur) ,
-                                                    3 + __BATIMENT__.index(batim)).value)
+    suptu = table_of_intrant[((table_of_intrant['Value'] == 'suptub') |
+                              (table_of_intrant['Value'] == 'supescom'))
+                             & (table_of_intrant['Categorie'] == 'ALL')].reset_index(drop=True)
 
-    tab_of_mesure.append( myBook.sheet_by_name('Intrants').cell(238 + __SECTEUR__.index(secteur) ,
-                                                    3 + __BATIMENT__.index(batim)).value)
+    cir = table_of_intrant[(table_of_intrant['Value'] == 'cir')
+                           & (table_of_intrant['Categorie'] == 'ALL')][__BATIMENT__].reset_index(drop=True)
 
-    tab_of_mesure.append( myBook.sheet_by_name('Intrants').cell(247 + __SECTEUR__.index(secteur) ,
-                                                    3 + __BATIMENT__.index(batim)).value +
-                          myBook.sheet_by_name('Intrants').cell(337 + __SECTEUR__.index(secteur) ,
-                                                    3 + __BATIMENT__.index(batim)).value)
+    suptu = suptu[__BATIMENT__].groupby(suptu['Secteur']).sum().reset_index()
+    tc = cost_param[(cost_param['Value'] == 'tfac') & (cost_param['Categorie'] == 'ALL')].reset_index(drop=True)
 
-    tab_of_mesure.append( myBook.sheet_by_name('Intrants').cell(256 + __SECTEUR__.index(secteur) ,
-                                                    3 + __BATIMENT__.index(batim)).value +
-                          myBook.sheet_by_name('Intrants').cell(346 + __SECTEUR__.index(secteur) ,
-                                                    3 + __BATIMENT__.index(batim)).value)
+    result = tc[__BATIMENT__] * suptu * cir
+    result[['Secteur', 'Categorie', 'Value']] = tc[['Secteur', 'Categorie', 'Value']]
+    result = result[cost_param.columns]
+    cout_result = cout_result.append(result)
 
-    tab_of_mesure.append( myBook.sheet_by_name('Intrants').cell(265 + __SECTEUR__.index(secteur) ,
-                                                    3 + __BATIMENT__.index(batim)).value)
-    for v in range(0 , len(entete)):
-        print(v, entete[v])
-    entete_cout_construction = [entete[1], entete[2], entete[3], entete[4], entete[5], entete[6], entete[7], entete[8],
-                                entete[9], entete[24],entete[25],entete[26],entete[27],entete[28]]
+    # Ascenceur
 
-    print(len(entete_cout_construction))
+    tc = cost_param[(cost_param['Value'] == 'asc') & (cost_param['Categorie'] == 'ALL')].reset_index(drop=True)
 
-    tab = cost_param[entete_cout_construction].values
-    print(tab)
-    print(tab_of_mesure)
-    result = tab * tab_of_mesure
+    result = tc[__BATIMENT__]
+    result[['Secteur', 'Categorie', 'Value']] = tc[['Secteur', 'Categorie', 'Value']]
+    result = result[cost_param.columns]
+    cout_result = cout_result.append(result)
 
-    for r in result:
-        for t in r:
-            print(t)
-    print(len(entete_cout_construction))
+    # Piscine, Chalet urbain
+    cir = table_of_intrant[(table_of_intrant['Value'] == 'pisc')
+                           & (table_of_intrant['Categorie'] == 'ALL')][__BATIMENT__].reset_index(drop=True)
+
+    tc = cost_param[(cost_param['Value'] == 'ca_asc_pi') & (cost_param['Categorie'] == 'ALL')].reset_index(drop=True)
+
+    cir = cir.isin(["Oui"]).astype(int)
+    result = tc[__BATIMENT__] * cir
+    result[['Secteur', 'Categorie', 'Value']] = tc[['Secteur', 'Categorie', 'Value']]
+    result = result[cost_param.columns]
+    cout_result = cout_result.append(result)
+
+    cir = table_of_intrant[(table_of_intrant['Value'] == 'cub')
+                           & (table_of_intrant['Categorie'] == 'ALL')][__BATIMENT__].reset_index(drop=True)
+
+    tc = cost_param[(cost_param['Value'] == 'ca_asc_cu') & (cost_param['Categorie'] == 'ALL')].reset_index(drop=True)
+
+    cir = cir.isin(["Oui"]).astype(int)
+    result = tc[__BATIMENT__] * cir
+    result[['Secteur', 'Categorie', 'Value']] = tc[['Secteur', 'Categorie', 'Value']]
+    result = result[cost_param.columns]
+    cout_result = cout_result.append(result)
+
+    # Finition espace commerciaux
+
+    suptu = table_of_intrant[(table_of_intrant['Value'] == 'supescom')
+                             & (table_of_intrant['Categorie'] == 'ALL')].reset_index(drop=True)
+
+    cir = table_of_intrant[(table_of_intrant['Value'] == 'cir')
+                           & (table_of_intrant['Categorie'] == 'ALL')][__BATIMENT__].reset_index(drop=True)
+
+    tc = cost_param[(cost_param['Value'] == 'ca_esc_b') & (cost_param['Categorie'] == 'ALL')].reset_index(drop=True)
+
+    result = tc[__BATIMENT__] * suptu * (1 - cir)
+    result[['Secteur', 'Categorie', 'Value']] = tc[['Secteur', 'Categorie', 'Value']]
+    result = result[cost_param.columns]
+    cout_result = cout_result.append(result)
+
+    # Imprevu
+    sumc = cout_result[__BATIMENT__].groupby(cout_result['Secteur']).sum().reset_index(drop=True)
+    tc = cost_param[(cost_param['Value'] == 'it') & (cost_param['Categorie'] == 'ALL')].reset_index(drop=True)
+    result = sumc * (tc[__BATIMENT__] / (1 - tc[__BATIMENT__]))
+    result[['Secteur', 'Categorie', 'Value']] = tc[['Secteur', 'Categorie', 'Value']]
+    result = result[cost_param.columns]
+    cout_result = cout_result.append(result)
+
+    # Cout Additionnel
+    cout_add = dict()
+    sh = myBook.sheet_by_name('Cout')
+    for quality in range(len(__QUALITE_BATIMENT__)):
+        line = 74 + quality
+        for type in range(len(__UNITE_TYPE__)):
+            col = 4 + type
+            if type > 4:
+                col = col - 3
+            value = sh.cell(line, col).value + sh.cell(73, col).value
+            cout_add[(__UNITE_TYPE__[type], __QUALITE_BATIMENT__[quality])] = value
+
+    sh = myBook.sheet_by_name('Scenarios')
+    tab = ajouter_caraterisque_par_type_unite(sh, [], 'qum', [23, 2], False)
+    tab = ajouter_caraterisque_par_type_unite(sh, tab, 'quf', [32, 2], False)
+    tab = pd.DataFrame(tab, columns=table_of_intrant.columns)
+
+    x = tab[tab['Value'] == 'qum'][__BATIMENT__].values
+    res = [tab]
+
+    for type_batiment in __UNITE_TYPE__[0:5]:
+        _ = np.copy(x)
+        _[_ == __QUALITE_BATIMENT__[0]] = cout_add[(type_batiment, __QUALITE_BATIMENT__[0])]
+        _[_ == __QUALITE_BATIMENT__[1]] = cout_add[(type_batiment, __QUALITE_BATIMENT__[1])]
+        _[_ == __QUALITE_BATIMENT__[2]] = cout_add[(type_batiment, __QUALITE_BATIMENT__[2])]
+
+        suptu = table_of_intrant[(table_of_intrant['Value'] == 'suptu')
+                                 & (table_of_intrant['Categorie'] == type_batiment)][__BATIMENT__].values
+
+        column_name = ['qum' for secteur in __SECTEUR__]
+        _ = np.insert(_, 0, column_name, axis=1)
+        column_name = [type_batiment for secteur in __SECTEUR__]
+        _ = np.insert(_, 0, column_name, axis=1)
+        column_name = [secteur for secteur in __SECTEUR__]
+        _ = np.insert(_, 0, column_name, axis=1)
+
+        res.append(pd.DataFrame(_, columns=table_of_intrant.columns))
+
+    x = tab[tab['Value'] == 'quf'][__BATIMENT__].values
+
+    for type_batiment in __UNITE_TYPE__[5:]:
+        _ = np.copy(x)
+        _[_ == __QUALITE_BATIMENT__[0]] = cout_add[(type_batiment, __QUALITE_BATIMENT__[0])]
+        _[_ == __QUALITE_BATIMENT__[1]] = cout_add[(type_batiment, __QUALITE_BATIMENT__[1])]
+        _[_ == __QUALITE_BATIMENT__[2]] = cout_add[(type_batiment, __QUALITE_BATIMENT__[2])]
+
+        suptu = table_of_intrant[(table_of_intrant['Value'] == 'suptu')
+                                 & (table_of_intrant['Categorie'] == type_batiment)][__BATIMENT__].values
+
+        _ = _ * suptu
+        column_name = ['qum' for secteur in __SECTEUR__]
+        _ = np.insert(_, 0, column_name, axis=1)
+        column_name = [type_batiment for secteur in __SECTEUR__]
+        _ = np.insert(_, 0, column_name, axis=1)
+        column_name = [secteur for secteur in __SECTEUR__]
+        _ = np.insert(_, 0, column_name, axis=1)
+
+        res.append(pd.DataFrame(_, columns=table_of_intrant.columns))
+
+    tab = pd.concat(res, ignore_index=True)
+    tab = tab[tab['Categorie'] != 'ALL']
+    tab = tab[__BATIMENT__].groupby(tab['Secteur']).sum()
+    tab = pd.DataFrame(tab, columns=__BATIMENT__)
+
+    tab['Categorie'] = 'ALL'
+    tab['Secteur'] = [secteur for secteur in __SECTEUR__]
+    tab['Value'] = 'qum'
+    tab = tab[cost_param.columns]
+
+    cout_result = cout_result.append(tab)
+
+    sumc = cout_result[cout_result['Value'] != 'it']
+    sumc = sumc[__BATIMENT__].groupby(sumc['Secteur']).sum().reset_index(drop=True)
+    tc = cost_param[(cost_param['Value'] == 'tx') & (cost_param['Categorie'] == 'ALL')].reset_index(drop=True)
+    result = sumc * tc[__BATIMENT__]
+    result[['Secteur', 'Categorie', 'Value']] = tc[['Secteur', 'Categorie', 'Value']]
+    result = result[cost_param.columns]
+    cout_result = cout_result.append(result)
+
+    sumc = cout_result[__BATIMENT__].groupby(cout_result['Secteur']).sum().reset_index(drop=True)
+    result = sumc
+    result[['Secteur', 'Categorie']] = tc[['Secteur', 'Categorie']]
+    result['Value'] = 'cct'
+    result = result[cost_param.columns]
+    cout_result = cout_result.append(result)
+
+    # SoFT Cost
+    tc = cost_param[(cost_param['Value'] == 'aptgeo') & (cost_param['Categorie'] == 'ALL')].reset_index(drop=True)
+
+    result = tc[__BATIMENT__]
+    result[['Secteur', 'Categorie', 'Value']] = tc[['Secteur', 'Categorie', 'Value']]
+    result = result[cost_param.columns]
+    cout_result = cout_result.append(result)
+
+    # Professionnel, Permis de construire, Pub
+
+    cir = cout_result[(cout_result['Value'] == 'cct')
+                      & (cout_result['Categorie'] == 'ALL')][__BATIMENT__].reset_index(drop=True)
+
+    tc = cost_param[(cost_param['Value'] == 'pai') & (cost_param['Categorie'] == 'ALL')].reset_index(drop=True)
+
+    result = tc[__BATIMENT__] * cir
+    result[['Secteur', 'Categorie', 'Value']] = tc[['Secteur', 'Categorie', 'Value']]
+    result = result[cost_param.columns]
+    cout_result = cout_result.append(result)
+
+    tc = cost_param[(cost_param['Value'] == 'pub') & (cost_param['Categorie'] == 'ALL')].reset_index(drop=True)
+
+    result = tc[__BATIMENT__] * cir
+    result[['Secteur', 'Categorie', 'Value']] = tc[['Secteur', 'Categorie', 'Value']]
+    result = result[cost_param.columns]
+    cout_result = cout_result.append(result)
+
+    tc = cost_param[(cost_param['Value'] == 'pco') & (cost_param['Categorie'] == 'ALL')].reset_index(drop=True)
+
+    result = tc[__BATIMENT__] * cir / 1000
+    result[['Secteur', 'Categorie', 'Value']] = tc[['Secteur', 'Categorie', 'Value']]
+    result = result[cost_param.columns]
+    cout_result = cout_result.append(result)
+
+    # Evaluateur, Frais legaux, Frais Professionnel Divers
+
+    tc = cost_param[(cost_param['Value'] == 'ev') & (cost_param['Categorie'] == 'ALL')].reset_index(drop=True)
+
+    result = tc[__BATIMENT__]
+    result[['Secteur', 'Categorie', 'Value']] = tc[['Secteur', 'Categorie', 'Value']]
+    result = result[cost_param.columns]
+    cout_result = cout_result.append(result)
+
+    tc = cost_param[(cost_param['Value'] == 'fl') & (cost_param['Categorie'] == 'ALL')].reset_index(drop=True)
+
+    result = tc[__BATIMENT__]
+    result[['Secteur', 'Categorie', 'Value']] = tc[['Secteur', 'Categorie', 'Value']]
+    result = result[cost_param.columns]
+    cout_result = cout_result.append(result)
+
+    tc = cost_param[(cost_param['Value'] == 'fl') & (cost_param['Categorie'] == 'ALL')].reset_index(drop=True)
+
+    result = tc[__BATIMENT__]
+    result[['Secteur', 'Categorie', 'Value']] = tc[['Secteur', 'Categorie', 'Value']]
+    result = result[cost_param.columns]
+    cout_result = cout_result.append(result)
+
+    tc = cost_param[(cost_param['Value'] == 'fpa') & (cost_param['Categorie'] == 'ALL')].reset_index(drop=True)
+
+    result = tc[__BATIMENT__]
+    result[['Secteur', 'Categorie', 'Value']] = tc[['Secteur', 'Categorie', 'Value']]
+    result = result[cost_param.columns]
+    cout_result = cout_result.append(result)
+
+    tc = cost_param[(cost_param['Value'] == 'afc') & (cost_param['Categorie'] == 'ALL')].reset_index(drop=True)
+
+    result = tc[__BATIMENT__]
+    result[['Secteur', 'Categorie', 'Value']] = tc[['Secteur', 'Categorie', 'Value']]
+    result = result[cost_param.columns]
+    cout_result = cout_result.append(result)
+
+    return cout_result
 
 
 
@@ -134,8 +336,6 @@ def Calcul_cout_batiment(batim, secteur, ensemble, quality, myBook):
 if __name__ == '__main__':
 
     myBook = xlrd.open_workbook(__FILES_NAME__)
-    print(Calcul_cout_batiment(__BATIMENT__[7], __SECTEUR__[4],0,"Base", myBook))
-    # for v in __SECTEUR__:
-    #     for ba in __BATIMENT__:
-    #         Calcul_prix_terrain(ba, v,0,myBook)
-
+    intrant_param = get_global_intrant(myBook)
+    # calcul_prix_terrain(0,0,0,0)
+    print(calcul_cout_batiment(__BATIMENT__[7], __SECTEUR__[4], 0, "Base", intrant_param, myBook))
