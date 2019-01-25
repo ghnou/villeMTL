@@ -28,22 +28,69 @@ def ajouter_caraterisque_par_type_unite(sh, tab, name, pos, unique):
     return tab
 
 
-def get_global_intrant(myBook):
+def convert_unity_type_to_sector(group, data):
+        df = data[__BATIMENT__].mul(group[__BATIMENT__].values.tolist()[0] , axis=1)
+        df['category'] = group.name
+        df['sector'] = data['sector']
+        df['value'] = data['value']
+        return df
 
-    sh = myBook.sheet_by_name(__INTRANT_SHEET__)
+
+def split_unity_type_to_sector(group , data):
+    return data
+
+
+def get_surface(group, dict_of_surface):
+
+    tab = [group[batiment].map(dict_of_surface[group.name]).values.tolist() for batiment in __BATIMENT__]
+    tab = np.array(tab).transpose()
+    tab = pd.DataFrame(tab, columns=__BATIMENT__)
+    tab['category'] = group.name
+    group = group.reset_index()
+    tab['sector'] = group['sector']
+    tab['value'] = group['value']
+
+    return tab
+
+def calculate_total_surface(group):
+
+    df = group[group['value'] == 'ntu'][__BATIMENT__].reset_index(drop=True) * \
+         group[group['value'] == 'tum'][__BATIMENT__].reset_index(drop=True)
+    df['category'] = group.name
+    df['sector'] = group[group['value'] == 'ntu']['sector'].reset_index(drop=True)
+    df['value'] = 'suptu'
+
+    return df
+
+def get_cb1_characteristics(workbook) -> pd.DataFrame:
+
+    """
+    This function takes all the parameters of the Intrants sheets and calculate all the characteristics
+    of the CB1 sheet.
+
+    :param workbook: Excel Workbook containing all the parameters
+    :return: pd.Dataframe of all the characteristics of the CB1 sheet.
+
+    """""
+
+    #Open Intrants sheet and take all the importants parameters
+    sh = workbook.sheet_by_name(__INTRANT_SHEET__)
     table_of_intrant = []
-    tab_of_intrant_pos = [[[6, 3], 'ntu', 's'], [[15, 3], 'nmu_et', 's'], [[42, 3], 'denm_pu', 's'],
-                          [[51, 3], 'denm_p', 's'], [[60, 3], 'pptnu', 'ns'], [[69, 3], 'mp', 'ns'],
-                          [[70, 3], 'min_nu', 'ns'], [[71, 3], 'max_nu', 'ns'], [[72, 3], 'min_ne', 'ns'],
-                          [[73, 3], 'max_ne', 'ns'], [[74, 3], 'min_ne_ss', 'ns'], [[75, 3], 'max_ne_ss', 'ns'],
-                          [[76, 3], 'cir', 'ns'],
-                          [[77, 3], 'aec', 'ns'], [[78, 3], 'si', 'ns'], [[79, 3], 'pi_si', 'ns'],
-                          [[80, 3], 'ee_ss', 'ns'],
-                          [[82, 3], 'cub', 'ns'], [[83, 3], 'sup_cu', 'ns'], [[84, 3], 'supt_cu', 'ns'],
-                          [[85, 3], 'pisc', 'ns'], [[87, 3], 'sup_pisc', 'ns'], [[88, 3], 'pp_sup_escom', 'ns'],
-                          [[89, 3], 'pp_et_escom', 'ns'], [[90, 3], 'ss_sup_CES', 'ns'], [[91, 3], 'ss_sup_ter', 'ns'],
-                          [[92, 3], 'nba', 'ns'], [[93, 3], 'min_max_asc', 'ns'], [[94, 3], 'tap', 'ns'],
-                          [[24, 3], 'tum', 's'], [[33, 3], 'tuf', 's']]
+
+    #Table containing the position of all the intrants in the Intrants sheets. Refers to the lexique files
+    #to get the definition of the variables.
+    tab_of_intrant_pos = [[[10, 3], 'ntu', 's'], [[19, 3], 'nmu_et', 's'], [[55, 3], 'denm_pu', 's'],
+                          [[64, 3], 'denm_p', 's'],[[118, 3], 'mp', 'ns'],
+                          [[119, 3], 'min_nu', 'ns'], [[120, 3], 'max_nu', 'ns'], [[121, 3], 'min_ne', 'ns'],
+                          [[122, 3], 'max_ne', 'ns'], [[123, 3], 'min_ne_ss', 'ns'], [[124, 3], 'max_ne_ss', 'ns'],
+                          [[125, 3], 'cir', 'ns'],
+                          [[126, 3], 'aec', 'ns'], [[127, 3], 'si', 'ns'], [[128, 3], 'pi_si', 'ns'],
+                          [[129, 3], 'ee_ss', 'ns'],
+                          [[131, 3], 'cub', 'ns'], [[132, 3], 'sup_cu', 'ns'], [[133, 3], 'supt_cu', 'ns'],
+                          [[134, 3], 'pisc', 'ns'], [[136, 3], 'sup_pisc', 'ns'], [[137, 3], 'pp_sup_escom', 'ns'],
+                          [[138, 3], 'pp_et_escom', 'ns'], [[139, 3], 'ss_sup_CES', 'ns'], [[140, 3], 'ss_sup_ter', 'ns'],
+                          [[141, 3], 'nba', 'ns'], [[142, 3], 'min_max_asc', 'ns'], [[143, 3], 'tap', 'ns'],
+                          [[37, 3], 'tum', 's'], [[46, 3], 'tuf', 's']]
 
     for value in tab_of_intrant_pos:
 
@@ -54,45 +101,78 @@ def get_global_intrant(myBook):
         else:
             x = 0
 
-    entete = ['Secteur', 'Categorie', 'Value'] + __BATIMENT__
+    entete = ['sector', 'category', 'value'] + __BATIMENT__
     table_of_intrant = pd.DataFrame(table_of_intrant, columns=entete)
 
-    # Ajouter nombre unites par type d'unites
+    #TODO : Add the pptu given the scenarios
 
-    t = ajouter_caraterisque_par_type_unite(sh, [], 'pptu', [60, 3], False)
+    #Add number of unity by unity type
+    t = ajouter_caraterisque_par_type_unite(sh, [], 'pptu', [100, 3], False)
     t = pd.DataFrame(t, columns=entete)
-    print(table_of_intrant.shape)
-    x = table_of_intrant[table_of_intrant['Value'] == 'ntu'][__BATIMENT__].values
-    res = [table_of_intrant]
-    for type_batiment in __UNITE_TYPE__:
+    ntu = table_of_intrant[table_of_intrant['value'] == 'ntu'][__BATIMENT__ + ['sector', 'value']]
+    result = t.groupby('sector').apply(convert_unity_type_to_sector, ntu).reset_index(drop=True)
+    result = result[entete]
+    table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
 
-        _ = (x * t[t['Secteur'] == type_batiment][__BATIMENT__].values)
+    #Add unity Superficie
 
-        column_name = ['ntu' for secteur in __SECTEUR__]
-        _ = np.insert(_, 0, column_name, axis=1)
-        column_name = [type_batiment for secteur in __SECTEUR__]
-        _ = np.insert(_, 0, column_name, axis=1)
-        column_name = [secteur for secteur in __SECTEUR__]
-        _ = np.insert(_, 0, column_name, axis=1)
-
-        res.append(pd.DataFrame(_, columns=entete))
-
-    table_of_intrant = pd.concat(res, ignore_index=True)
-    print(table_of_intrant.shape)
-
-    # Ajout Superficie des unites
-
-    tum = dict()
+    #Get surface for small, medium and bug unity
+    dict_of_surface = dict()
     for type in range(len(__UNITE_TYPE__)):
-        line = 97 + type
+        d = dict()
+        line = 146 + type
         if type > 4:
             line += 2
         for col in range(3):
-            tum[(__UNITE_TYPE__[type], sh.cell(96, col + 3).value)] = sh.cell(line, col + 3).value
+            d[sh.cell(145, col + 3).value] = sh.cell(line, col + 3).value
+        dict_of_surface[__UNITE_TYPE__[type]] = d
 
-    res = [table_of_intrant]
+    tum = table_of_intrant[table_of_intrant['value'] == 'tum']
+    t = pd.DataFrame(__UNITE_TYPE__, columns=['category'])
+    result = t.groupby('category').apply(split_unity_type_to_sector ,tum[__BATIMENT__ + ['sector', 'value']]).reset_index()
+    result = result[entete]
+    result = result.groupby('category').apply(get_surface, dict_of_surface).reset_index(drop=True)
+    result = result[entete]
+    table_of_intrant = table_of_intrant[table_of_intrant['value'] != 'tum']
+    table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
 
-    x = table_of_intrant[table_of_intrant['Value'] == 'tum'][__BATIMENT__].values
+    #Total Surface by unity type
+    tum = table_of_intrant[(table_of_intrant['value'] == 'tum')|(table_of_intrant['value'] == 'ntu')&(table_of_intrant['category'] != 'ALL')]
+    result = tum.groupby('category').apply(calculate_total_surface).reset_index(drop=True)
+    result = result[entete]
+    table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
+
+    cir = table_of_intrant[(table_of_intrant['value'] == 'cir')&(table_of_intrant['category'] == 'ALL')][__BATIMENT__].reset_index(drop=True)
+
+    print(cir)
+    result = result[__BATIMENT__].groupby(result['sector']).sum().reset_index()
+    supbut = result[__BATIMENT__]/(1-cir)
+    result['category'] = 'ALL'
+    result['value'] = 'suptu'
+    result = result[entete]
+
+    supbut['category'] = 'ALL'
+    supbut['value'] = 'supbtu'
+    supbut['sector'] = result['sector']
+    supbut = supbut[entete]
+
+    #Calculate Brute Surface for common area
+    supt_cu = table_of_intrant[(table_of_intrant['value'] == 'supt_cu')&(table_of_intrant['category'] == 'ALL')][__BATIMENT__].reset_index(drop=True)
+    supt_cu = supt_cu/(1 - cir)
+    supt_cu['category'] = 'ALL'
+    supt_cu['value'] = 'supbt_cu'
+    supt_cu['sector'] = supbut['sector']
+    supt_cu = supt_cu[entete]
+
+    print(supt_cu)
+    table_of_intrant = pd.concat([table_of_intrant, result, supbut, supt_cu], ignore_index=True)
+
+    return
+    # def get_surface(group, dict_of_surface_by_sector):
+
+    print(tum.apply(lambda x: get_surface(x, dict_of_surface), axis = 1))
+    print(x)
+    return
     for type_batiment in __UNITE_TYPE__[0:5]:
         _ = np.copy(x)
         _[_ == 'Grande'] = tum[(type_batiment, 'Grande')]
@@ -251,4 +331,4 @@ def get_global_intrant(myBook):
 
 if __name__ == '__main__':
     myBook = xlrd.open_workbook(__FILES_NAME__)
-    get_global_intrant(myBook)
+    get_cb1_characteristics(myBook)
