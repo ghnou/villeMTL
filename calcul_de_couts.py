@@ -1,4 +1,4 @@
-from obtention_intrant import get_global_intrant
+from obtention_intrant import get_cb1_characteristics
 
 __author__ = 'pougomg'
 import xlrd
@@ -45,25 +45,40 @@ def calcul_cout_batiment(table_of_intrant, myBook):
     cost_param = get_building_cost_parameter(myBook)
     cout_result = pd.DataFrame([], columns=cost_param.columns)
 
-    # Terrain
-
-    den = table_of_intrant[(table_of_intrant['Value'] == 'denm_pu') & (table_of_intrant['Categorie'] == 'ALL')][
+    # Coquille
+    tc = cost_param[(cost_param['value'] == 'tcq') & (cost_param['category'] == 'ALL')].reset_index(drop=True)
+    supths = table_of_intrant[(table_of_intrant['value'] == 'sup_tot_hs') & (table_of_intrant['category'] == 'ALL')][
         __BATIMENT__].reset_index(drop=True)
-    suft = table_of_intrant[(table_of_intrant['Value'] == 'supterrain') & (table_of_intrant['Categorie'] == 'ALL')][
-        __BATIMENT__].reset_index(drop=True)
-    calcul_prix_terrain(den, suft)
-    # Travaux coquille
-
-    tc = cost_param[(cost_param['Value'] == 'tcq') & (cost_param['Categorie'] == 'ALL')].reset_index(drop=True)
-
-    supths = table_of_intrant[(table_of_intrant['Value'] == 'supths') & (table_of_intrant['Categorie'] == 'ALL')][
-        __BATIMENT__].reset_index(drop=True)
-
     result = tc[__BATIMENT__] * supths
-    result[['Secteur', 'Categorie', 'Value']] = tc[['Secteur', 'Categorie', 'Value']]
+    result[['sector', 'category', 'value']] = tc[['sector', 'category', 'value']]
     result = result[cost_param.columns]
-
     cout_result = result
+
+    # Sous Sol
+    cout_result = pd.concat([cout_result, cost_param[cost_param['value'] == 'tss']],
+                            ignore_index=True)
+
+    # Travaux Finition unite de marche
+    suptu = table_of_intrant[
+        (table_of_intrant['value'] == 'suptu') & (table_of_intrant['category'].isin(__UNITE_TYPE__[0:5]))].reset_index(
+        drop=True)
+    suptu = suptu[__BATIMENT__].groupby(suptu['sector']).sum().reset_index(drop=True)
+    tfu = cost_param[(cost_param['value'] == 'tfum') & (cost_param['category'] == 'ALL')].reset_index(drop=True)
+    result = tfu[__BATIMENT__] * suptu
+    result[['sector', 'category', 'value']] = tfu[['sector', 'category', 'value']]
+    result = result[cost_param.columns]
+    cout_result = pd.concat([cout_result, result],
+                            ignore_index=True)
+
+    # Allocation pour cuisine, salle de bain
+    cout_result = pd.concat([cout_result, cost_param[cost_param['value'] == 'all_cuis']],
+                            ignore_index=True)
+    cout_result = pd.concat([cout_result, cost_param[cost_param['value'] == 'all_sdb']],
+                            ignore_index=True)
+    print(result)
+
+    return
+
 
     # Travaux finitions des unites
 
@@ -336,6 +351,6 @@ def calcul_cout_batiment(table_of_intrant, myBook):
 if __name__ == '__main__':
 
     myBook = xlrd.open_workbook(__FILES_NAME__)
-    intrant_param = get_global_intrant(myBook)
+    intrant_param = get_cb1_characteristics(myBook)
     # calcul_prix_terrain(0,0,0,0)
-    print(calcul_cout_batiment(__BATIMENT__[7], __SECTEUR__[4], 0, "Base", intrant_param, myBook))
+    print(calcul_cout_batiment(intrant_param, myBook))

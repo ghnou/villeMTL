@@ -1,7 +1,7 @@
 __FILES_NAME__ = 'outils cout.xlsx'
 
 __INTRANT_SHEET__ = 'Intrants'
-__COUT_SHEET__ = 'Cout'
+__COUT_SHEET__ = 'PCOUTS'
 __PRIX_SHEET__ = 'Prix'
 
 __BATIMENT__ = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9']

@@ -5,12 +5,8 @@ import numpy as np
 import pandas as pd
 import xlrd
 
-__FILES_NAME__ = 'ville_MTL_templates.xlsx'
-__BATIMENT__ = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9']
-__SECTEUR__ = ['Secteur 1', 'Secteur 2', 'Secteur 3', 'Secteur 4', 'Secteur 5', 'Secteur 6', 'Secteur 7']
-__UNITE_TYPE__ = ['Studios', '1cc', '2cc', '3cc', 'Penthouse', '2cc fam', '3cc fam']
-__COUT_SHEET__ = 'Cout'
-__PRIX_SHEET__ = 'Prix'
+from lexique import __COUT_SHEET__, __BATIMENT__, \
+    __SECTEUR__, __UNITE_TYPE__
 
 
 def ajouter_caraterisque_par_secteur(sh, tab, name, pos, unique):
@@ -44,16 +40,13 @@ def get_building_cost_parameter(myBook):
 
     __CONSTRUCTION_LINE__ = 40
     entete.append('Batiment')
-    tab_construction = [[[41, 4], 'tcq'], [[42, 4], 'tfu'], [[43, 4], 'ca_se'], [[44, 4], 'ca_gc'], [[45, 4], 'tfac'],
-                        [[46, 4], 'asc'], [[47, 4], 'ca_asc_pi'], [[48, 4], 'ca_asc_cu'],
-                        [[49, 4], 'ca_esc_b'], [[50, 4], 'it'], [[67, 4], 'tx'], [[53, 4], 'aptgeo'], [[54, 4], 'pai']
-        , [[55, 4], 'ev'], [[56, 4], 'fl'], [[57, 4], 'fp'], [[58, 4], 'pub'], [[59, 4], 'pco'], [[60, 4], 'fpa']
-        , [[61, 4], 'cad'], [[62, 4], 'afc'], [[63, 4], 'clv']]
+    tab_construction = [[[60, 4], 'tcq'], [[61, 4], 'tss'], [[62, 4], 'tfum'], [[63, 4], 'all_cuis'],
+                        [[64, 4], 'all_sdb'], [[65, 4], 'tv_f_ac'], [[66, 4], 'asc'], [[67, 4], 'c_ad_pisc'],
+                        [[68, 4], 'c_ad_cu'], [[69, 4], 'c_ad_com'], [[70, 4], 'it']]
 
     for value in tab_construction:
         tab_cost = ajouter_caraterisque_par_secteur(sh, tab_cost, value[1], value[0], True)
-
-    return pd.DataFrame(tab_cost, columns=['Secteur', 'Categorie', 'Value'] + __BATIMENT__)
+    return pd.DataFrame(tab_cost, columns=['sector', 'category', 'value'] + __BATIMENT__)
 
     for col in range(4, 13):
         tab = [__BATIMENT__[col - 4]]
