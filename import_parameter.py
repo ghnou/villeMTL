@@ -36,66 +36,23 @@ def get_building_cost_parameter(myBook):
 
     sh = myBook.sheet_by_name(__COUT_SHEET__)
     tab_cost = []
-    entete = []
 
-    __CONSTRUCTION_LINE__ = 40
-    entete.append('Batiment')
-    tab_construction = [[[60, 4], 'tcq'], [[61, 4], 'tss'], [[62, 4], 'tfum'], [[63, 4], 'all_cuis'],
-                        [[64, 4], 'all_sdb'], [[65, 4], 'tv_f_ac'], [[66, 4], 'asc'], [[67, 4], 'c_ad_pisc'],
-                        [[68, 4], 'c_ad_cu'], [[69, 4], 'c_ad_com'], [[70, 4], 'it']]
+    tab_params = [
+        #Construction
+        [[60, 4], 'tcq'], [[61, 4], 'tss'], [[62, 4], 'tfum'], [[63, 4], 'all_cuis'],[[64, 4], 'all_sdb'],
+        [[65, 4], 'tvfac'], [[66, 4], 'asc'], [[67, 4], 'c_ad_pisc'], [[68, 4], 'c_ad_cu'], [[69, 4], 'c_ad_com'],
+        [[70, 4], 'it']
+        #Soft cost
+        ,[[73, 4], 'apt_geo'], [[74, 4], 'prof'], [[75, 4], 'eval'], [[76, 4], 'legal_fee'], [[77, 4], 'prof_fee_div'],
+        [[78, 4], 'pub'], [[79, 4], 'construction_permit'], [[80, 4], 'com'],
 
-    for value in tab_construction:
+                  ]
+
+    for value in tab_params:
         tab_cost = ajouter_caraterisque_par_secteur(sh, tab_cost, value[1], value[0], True)
     return pd.DataFrame(tab_cost, columns=['sector', 'category', 'value'] + __BATIMENT__)
 
-    for col in range(4, 13):
-        tab = [__BATIMENT__[col - 4]]
-        for line in range(__CONSTRUCTION_LINE__ + 1, __CONSTRUCTION_LINE__ + 11):
-            value = sh.cell(line, col).value
-            value = 0 if value == '' else value
-            tab.append(value)
-            if col == 4:
-                entete.append(sh.cell(line, 2).value)
-        tab_cost.append(tab)
 
-    __SOFT_COST__ = 52
-
-    for col in range(4, 13):
-        for line in range(__SOFT_COST__ + 1, __SOFT_COST__ + 12):
-            value = sh.cell(line, col).value
-            value = 0 if value == '' else value
-            tab_cost[col-4].append(value)
-            if col == 4:
-                entete.append(sh.cell(line, 2).value)
-
-    __TAXES__ = 67
-
-    for col in range(4, 13):
-        value = sh.cell(__TAXES__, col).value
-        value = 0 if value == '' else value
-        tab_cost[col-4].append(value)
-
-    entete.append('Taxes')
-    tab_total_cost = []
-    entete.append('quality')
-
-    __COUT_ADDITIONNEL__ = 72
-    __QUALITE_BATIMENT__ = ['Base', 'Moyenne', 'Elevee']
-
-    for line in range(__COUT_ADDITIONNEL__ + 2, __COUT_ADDITIONNEL__ + 5):
-        quality = [__QUALITE_BATIMENT__[line - __COUT_ADDITIONNEL__ - 2]]
-
-        for col in range(4, 9):
-            value = sh.cell(line, col).value + sh.cell(73, col).value
-            value = 0 if value == '' else value
-            quality.append(value)
-            if line == __COUT_ADDITIONNEL__ + 2:
-                entete.append(sh.cell(71, col).value)
-
-        for value in tab_cost:
-            tab_total_cost.append(value + quality)
-
-    return pd.DataFrame(tab_total_cost, columns=entete)
 
 
 def get_land_param(myBook):
