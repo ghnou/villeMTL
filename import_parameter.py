@@ -39,14 +39,13 @@ def get_building_cost_parameter(myBook):
 
     tab_params = [
         #Construction
-        [[60, 4], 'tcq'], [[61, 4], 'tss'], [[62, 4], 'tfum'], [[63, 4], 'all_cuis'],[[64, 4], 'all_sdb'],
-        [[65, 4], 'tvfac'], [[66, 4], 'asc'], [[67, 4], 'c_ad_pisc'], [[68, 4], 'c_ad_cu'], [[69, 4], 'c_ad_com'],
-        [[70, 4], 'it']
+        [[46, 4], 'tcq'], [[47, 4], 'tss'], [[48, 4], 'tfum'], [[49, 4], 'all_cuis'], [[50, 4], 'all_sdb'],
+        [[51, 4], 'tvfac'], [[52, 4], 'asc'], [[53, 4], 'c_ad_pisc'], [[54, 4], 'c_ad_cu'], [[55, 4], 'c_ad_com'],
+        [[56, 4], 'it']
         #Soft cost
-        ,[[73, 4], 'apt_geo'], [[74, 4], 'prof'], [[75, 4], 'eval'], [[76, 4], 'legal_fee'], [[77, 4], 'prof_fee_div'],
-        [[78, 4], 'pub'], [[79, 4], 'construction_permit'], [[80, 4], 'com'],
+        , [[59, 4], 'apt_geo'], [[60, 4], 'prof'], [[61, 4], 'eval'], [[62, 4], 'legal_fee'], [[63, 4], 'prof_fee_div'],
+        [[64, 4], 'pub'], [[65, 4], 'construction_permit'], [[66, 4], 'com'], ]
 
-                  ]
 
     for value in tab_params:
         tab_cost = ajouter_caraterisque_par_secteur(sh, tab_cost, value[1], value[0], True)

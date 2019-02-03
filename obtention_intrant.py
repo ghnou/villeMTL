@@ -2,16 +2,19 @@ import numpy as np
 import pandas as pd
 import xlrd
 
-from lexique import __COUTS_FILES_NAME__, __INTRANT_SHEET__, __BATIMENT__, __SECTEUR__, __UNITE_TYPE__
+from lexique import __COUTS_FILES_NAME__, __INTRANT_SHEET__, __PRICE_SHEET__, \
+    __BATIMENT__, __SECTEUR__, __UNITE_TYPE__, __SCENARIO_SHEET__
 
 
-def ajouter_caraterisque_par_secteur(sh, tab, name, pos, unique):
+def ajouter_caraterisque_par_secteur(sh, tab, name, pos, category, unique):
 
     for secteur in __SECTEUR__:
-        _ = [secteur, 'ALL', name]
+        _ = [secteur, category, name]
         line = pos[0] if unique else __SECTEUR__.index(secteur) + pos[0]
         for batiment in range(len(__BATIMENT__)):
-            _.append(sh.cell(line, pos[1] + batiment).value)
+            value = sh.cell(line, pos[1] + batiment).value
+            value = 0 if value == '' else value
+            _.append(value)
         tab.append(_)
     return tab
 
@@ -45,6 +48,14 @@ def convert_unity_type_to_sector(group, data):
 def split_unity_type_to_sector(group, data):
     return data
 
+
+def calculate_price(group):
+    t = group[group['value'] == 'ntu'][__BATIMENT__].reset_index(drop=True) * group[group['value'] == 'price'][
+        __BATIMENT__].reset_index(drop=True)
+    t['sector'] = group[group['value'] == 'ntu'].reset_index()['sector']
+    print(group.name)
+    print(t)
+    return t
 
 def get_surface(group, dict_of_surface):
     tab = [group[batiment].map(dict_of_surface[group.name]).values.tolist() for batiment in __BATIMENT__]
@@ -129,6 +140,9 @@ def get_cb1_characteristics(workbook) -> pd.DataFrame:
         supt_cu
         pp_et_escom
         pptu
+        cub
+        price
+        cont_soc
     """""
 
     # Open Intrants sheet and take all the importants parameters
@@ -154,9 +168,9 @@ def get_cb1_characteristics(workbook) -> pd.DataFrame:
     # Get intrant parameters
     for value in tab_of_intrant_pos:
         if value[2] == 's':
-            table_of_intrant = ajouter_caraterisque_par_secteur(sh, table_of_intrant, value[1], value[0], False)
+            table_of_intrant = ajouter_caraterisque_par_secteur(sh, table_of_intrant, value[1], value[0], 'ALL', False)
         elif value[2] == 'ns':
-            table_of_intrant = ajouter_caraterisque_par_secteur(sh, table_of_intrant, value[1], value[0], True)
+            table_of_intrant = ajouter_caraterisque_par_secteur(sh, table_of_intrant, value[1], value[0], 'ALL', True)
         else:
             x = 0
 
@@ -332,6 +346,70 @@ def get_cb1_characteristics(workbook) -> pd.DataFrame:
     table_of_intrant = pd.concat([table_of_intrant, result],
                                  ignore_index=True)
 
+    # Prix terrain
+    sh = workbook.sheet_by_name(__PRICE_SHEET__)
+    # Get intrant parameters
+    x = []
+    for pos in range(len(__UNITE_TYPE__)):
+        x = ajouter_caraterisque_par_secteur(sh, x, 'price', [4 + pos * 9, 2], __UNITE_TYPE__[pos], False)
+
+    x = pd.DataFrame(x, columns=entete)
+    table_of_intrant = pd.concat([table_of_intrant, x],
+                                 ignore_index=True)
+
+    # Calcul total revenue
+
+    tot = table_of_intrant[((table_of_intrant['value'] == 'ntu') | (table_of_intrant['value'] == 'price'))
+                           & (table_of_intrant['category'] != 'ALL')]
+
+    result = (tot.groupby(tot['category']).apply(calculate_price).reset_index(drop=True))
+    result = result.groupby('sector').sum().reset_index()
+
+    # TODO: Fix house Price
+    result['category'] = 'ALL'
+    result['value'] = 'price'
+    result = result[entete]
+    table_of_intrant = pd.concat([table_of_intrant, result],
+                                 ignore_index=True)
+
+    # Contribution sociale
+    sh = workbook.sheet_by_name(__SCENARIO_SHEET__)
+    f7 = sh.cell(6, 5).value
+    c27 = sh.cell(26, 2).value
+    c30 = sh.cell(29, 2).value
+    # =SI('Scénarios'!$C$27 = 'Scénarios'!$F$7;
+    # SI('Scénarios'!$C$30 = 'Scénarios'!$F$7;
+    # 'Scénarios'!$D43 * CFINAL!D377 * 'Scénarios'!$D$30;
+    # 'Scénarios'!$D43 * CFINAL!D377 * 'Scénarios'!$D$31);
+    #
+    # SI('Scénarios'!$C$30 = 'Scénarios'!$F$7;
+    # 'Scénarios'!$D53 * CFINAL!D377 * 'Scénarios'!$D$30;
+    # 'Scénarios'!$D53 * CFINAL!D377 * 'Scénarios'!$D$31))
+    if f7 == c30 and f7 == c27:
+        v = [42, 29]
+    elif f7 != c30 and f7 == c27:
+        v = [42, 30]
+    elif f7 == c30 and f7 != c27:
+        v = [52, 29]
+    else:
+        v = [52, 30]
+    result = []
+    for line in range(len(__SECTEUR__)):
+        prop = sh.cell(v[1], 3).value
+        _ = [__SECTEUR__[line], 'ALL', 'cont_soc']
+        for col in range(len(__BATIMENT__)):
+            _.append(float(sh.cell(v[0] + line, 3).value) * float(prop))
+        result.append(_)
+
+    result = pd.DataFrame(result, columns=entete)
+
+    table_of_intrant = pd.concat([table_of_intrant, result],
+                                 ignore_index=True)
+
+
+
+
+
     # 1- sup_ter: superficie de terrain (will be removed if the information is provided);
     # 2- tum: taille des unites;
     # 3- tuf: taille des unites familiales;
@@ -358,7 +436,7 @@ def get_cb1_characteristics(workbook) -> pd.DataFrame:
 
     value_to_return = ['sup_ter', 'tum', 'tuf', 'vat', 'denm_p', 'ces', 'pptu', 'cir', 'aec', 'si', 'pi_si', 'ee_ss',
                        'pi_ee', 'min_ne', 'max_ne', 'suptu', 'supbtu', 'sup_com', 'sup_tot_hs', 'pisc', 'sup_ss', 'ppts',
-                       'ntu', 'supt_cu', 'pp_et_escom', 'pptu']
+                       'ntu', 'supt_cu', 'pp_et_escom', 'pptu', 'cub', 'price', 'cont_soc']
 
     return table_of_intrant[table_of_intrant['value'].isin(value_to_return)]
 
