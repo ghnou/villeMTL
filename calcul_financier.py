@@ -1,13 +1,135 @@
-from calcul_de_couts import Calcul_prix_terrain
+from calcul_de_couts import  calcul_cout_batiment
 import pandas as pd
 import numpy as np
 import xlrd
-from import_parameter import __FILES_NAME__,__BATIMENT__, __SECTEUR__, __UNITE_TYPE__, get_nombre_unite, get_house_price
+from import_parameter import get_building_cost_parameter
+from lexique import __FINANCE_FILES_NAME__,__BATIMENT__, __SECTEUR__, __UNITE_TYPE__, __COUTS_FILES_NAME__,\
+    __FINANCE_PARAM_SHEET__, __ECOULEMENT_SHEET__
+from obtention_intrant import get_cb1_characteristics
 
 __author__ = 'pougomg'
 
+def debut_des_ventes(group, d, fonction_ecoulement):
 
-def calcul_detail_financier(batim, secteur, ensemble, quality, periode ,myBook):
+    """
+        This function is used to calculate the beginning of the sales of the building.
+        :param
+        group (pd.DataFrame): Dataframe of month timeline
+         d (dict): Duree moyenne entre l'achat de terrain et le debut de la prevente
+
+        :return
+        pd.Serie: Serie contenant le timeline de debut de prevente
+    """
+    fonction_ecoulement = fonction_ecoulement[[group.name]].reset_index(drop=True)
+    f3mo = fonction_ecoulement.loc[0, group.name]
+    f3mo_after = fonction_ecoulement.loc[1, group.name]
+    group.where(group > d[group.name], 0, inplace=True)
+    group.where(group == 0, 1, inplace=True)
+
+    t = group.reset_index(drop=True)
+    x1 = (f3mo/3).round(2) * (np.heaviside(t.index - d[group.name] + 1, 0) - np.heaviside(t.index - d[group.name] - 2, 0))
+    x2 = (f3mo_after/3).round(2) * (np.heaviside(t.index - d[group.name] - 2, 0))
+    # print((x1 + x2))
+    group['ecoulement'] = x1 + x2
+    t = group[['ecoulement']].cumsum()
+    t.loc[t.loc[:, 'ecoulement'] > 1, 'ecoulement'] = 0
+    group['sum'] = t
+    group.loc[group.loc[:, 'sum'] == 0, 'ecoulement'] = 0
+    group.loc[group['sum'].idxmax() + 1 , 'ecoulement'] = 1 - group.loc[:, 'sum'].max()
+
+    return group[['1', 'ecoulement']]
+
+def calcul_ecoulement_et_vente(group, nombre_total_unite):
+
+    print(group.name)
+    print(nombre_total_unite)
+
+    t = nombre_total_unite[nombre_total_unite['category'].isin(__UNITE_TYPE__)][[group.name, 'category', 'value']].set_index('category').transpose()
+
+    print(t)
+    return
+    result = pd.DataFrame([t.values[0] for i in range(group.shape[0])], columns=t.columns).reset_index(drop=True)
+
+    print(result.mul(group['ecoulement'].values, axis=0))
+
+    print(t.columns)
+
+
+
+
+
+def calcul_detail_financier(cost_table, financials_param, secteur, batiment, my_book, timeline) -> pd.DataFrame:
+
+    """""
+    This function is used to compute the cost of a builiding given a specific sector.
+
+    :param
+    cost_table (pd.DataFrame):  The table containing all the building useful information necessary to compute the financials.
+
+    secteur (str): sector of the building
+
+    batiment (range): range containing the building we want to compute the costs. eg: ['B1', 'B7']
+
+    :return
+
+    financials_result (pd.Dataframe)
+
+    """""
+    fsh = my_book.sheet_by_name(__FINANCE_PARAM_SHEET__)
+    financials_result = []
+    for bat in batiment:
+         financials_result.append(pd.DataFrame([[bat, i + 1, 1] for i in range(timeline)], columns=['batiment', '1', '2']))
+    financials_result = pd.concat(financials_result,
+                                  ignore_index=True)
+    # Debut des ventes
+    d_ = dict()
+    pos = [21, 2]
+    for _ in range(len(__BATIMENT__)):
+        d_[__BATIMENT__[_]] = fsh.cell(pos[0], pos[1] + _).value
+
+    # Fonction d'ecoulement
+    esh = my_book.sheet_by_name(__ECOULEMENT_SHEET__)
+    tab = []
+
+    pos_first_3mo = [4, 2]
+
+    for line in range(len(__SECTEUR__)):
+        _ = [__SECTEUR__[line], '3mo']
+        for col in range(len(__BATIMENT__)):
+            _.append(esh.cell(line + pos_first_3mo[0], col + pos_first_3mo[1]).value)
+        tab.append(_)
+
+    pos_next_3mo = [15, 2]
+
+    for line in range(len(__SECTEUR__)):
+        _ = [__SECTEUR__[line], 'n3mo']
+        for col in range(len(__BATIMENT__)):
+            _.append(esh.cell(line + pos_next_3mo[0], col + pos_next_3mo[1]).value)
+        tab.append(_)
+
+    fonction_ecoulement = pd.DataFrame(tab, columns=['sector', 'value'] + __BATIMENT__)
+    fonction_ecoulement = fonction_ecoulement[fonction_ecoulement['sector'] == secteur]
+
+    financials_result[['3', 'ecoulement']] = financials_result[['1']].groupby(financials_result['batiment']).apply(debut_des_ventes, d_, fonction_ecoulement)
+
+    # Ventes (Ecoulement et revenus bruts)
+
+    financials_result[['ecoulement']].groupby(financials_result['batiment']).apply(calcul_ecoulement_et_vente,
+                                                                                   cost_table[(cost_table['value'] == 'ntu') |
+                                                                                   (cost_table['value'] == 'price')])
+
+
+
+
+    return
+    print(fonction_ecoulement[batiment].groupby(fonction_ecoulement['sector']).apply(ventes_ecoulement))
+    print(financials_result.head(20))
+    print(cost_table[cost_table['value'] == 'ntu'].groupby('sector').apply(ventes_ecoulement, fonction_ecoulement))
+    # print(financials_result)
+
+
+
+def calcul_detail_financier_(batim, secteur, ensemble, quality, periode ,myBook):
 
     
     prix_terrain = Calcul_prix_terrain(batim, secteur, ensemble, myBook)[0]
@@ -135,5 +257,15 @@ def calcul_detail_financier(batim, secteur, ensemble, quality, periode ,myBook):
 
 if __name__ == '__main__':
 
-    myBook = xlrd.open_workbook(__FILES_NAME__)
-    calcul_detail_financier(__BATIMENT__[7], __SECTEUR__[4],0,"Base",120, myBook)
+    myBook = xlrd.open_workbook(__COUTS_FILES_NAME__)
+    intrant_param = get_cb1_characteristics(myBook)
+    cost_param = get_building_cost_parameter(myBook)
+
+    intrant_param = intrant_param[['sector', 'category', 'value', 'B1', 'B3', 'B8']]
+    intrant_param = intrant_param[(intrant_param['sector'] == 'Secteur 7') & (intrant_param['value'] != 'pptu')]
+    cost_param = cost_param[['sector', 'category', 'value', 'B1', 'B3', 'B8']]
+    cost_param = cost_param[cost_param['sector'] == 'Secteur 7']
+    cost_table = calcul_cout_batiment(intrant_param, cost_param, 'Secteur 7', ['B1', 'B3', 'B8'], myBook)
+
+    myBook = xlrd.open_workbook(__FINANCE_FILES_NAME__)
+    calcul_detail_financier(cost_table, None, 'Secteur 7', ['B1', 'B3', 'B8'], myBook, 120)

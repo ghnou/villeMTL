@@ -53,8 +53,6 @@ def calculate_price(group):
     t = group[group['value'] == 'ntu'][__BATIMENT__].reset_index(drop=True) * group[group['value'] == 'price'][
         __BATIMENT__].reset_index(drop=True)
     t['sector'] = group[group['value'] == 'ntu'].reset_index()['sector']
-    print(group.name)
-    print(t)
     return t
 
 def get_surface(group, dict_of_surface):
@@ -110,7 +108,7 @@ def get_cb1_characteristics(workbook) -> pd.DataFrame:
         10- 128, stationnement interieur: si
         11- 129, pied carre par stationnement interieur: pi_si;
         12- 130, espaces d'entreposage sous sol: ee_ss;
-        13-131, pied carre par espace entreposage: pi_ee;
+        13- 131, pied carre par espace entreposage: pi_ee;
 
         :return: pd.Dataframe of all the characteristics of the CB1 sheet.
 
@@ -137,12 +135,14 @@ def get_cb1_characteristics(workbook) -> pd.DataFrame:
         21- sup_ss: superfice sous sol;
         22- ppts: Proportion en terme de superficie totale;
         23- ntu: nombre total d'unites-type;
-        supt_cu
-        pp_et_escom
-        pptu
-        cub
-        price
-        cont_soc
+        24- supt_cu: superficie chalet urbain
+        25- pp_et_escom: proportion un etage espace commercial
+        26- pptu: proportion en terme d'unite
+        27- cub: chalet urbain presence
+        28- price: price per type of units in each sector
+        29- cont_soc: Part de contribution sociale
+        30- sup_parc: superifcie parc
+        31- decont: incitatif decontamination.
     """""
 
     # Open Intrants sheet and take all the importants parameters
@@ -346,7 +346,7 @@ def get_cb1_characteristics(workbook) -> pd.DataFrame:
     table_of_intrant = pd.concat([table_of_intrant, result],
                                  ignore_index=True)
 
-    # Prix terrain
+    # Prix Maison
     sh = workbook.sheet_by_name(__PRICE_SHEET__)
     # Get intrant parameters
     x = []
@@ -358,14 +358,13 @@ def get_cb1_characteristics(workbook) -> pd.DataFrame:
                                  ignore_index=True)
 
     # Calcul total revenue
-
     tot = table_of_intrant[((table_of_intrant['value'] == 'ntu') | (table_of_intrant['value'] == 'price'))
                            & (table_of_intrant['category'] != 'ALL')]
 
     result = (tot.groupby(tot['category']).apply(calculate_price).reset_index(drop=True))
     result = result.groupby('sector').sum().reset_index()
 
-    # TODO: Fix house Price
+
     result['category'] = 'ALL'
     result['value'] = 'price'
     result = result[entete]
@@ -405,10 +404,45 @@ def get_cb1_characteristics(workbook) -> pd.DataFrame:
 
     table_of_intrant = pd.concat([table_of_intrant, result],
                                  ignore_index=True)
+    # Frais de parc
+    fp_exig = sh.cell(62, 2).value
+    if fp_exig == 'Oui':
+        sup = table_of_intrant[(table_of_intrant['value'] == 'suptu')
+                               & (table_of_intrant['category'].isin(__UNITE_TYPE__[0:3]))]
+        sup = sup[__BATIMENT__].groupby(sup['sector']).sum().reset_index(drop=True)
+        cir = 1 + table_of_intrant[(table_of_intrant['value'] == 'cir')][__BATIMENT__].reset_index(drop=True)
+        ntu = table_of_intrant[(table_of_intrant['value'] == 'ntu')
+                               & (table_of_intrant['category'] == 'ALL')][__BATIMENT__].reset_index(drop=True)
+        ntu.where(ntu > 2, 0, inplace=True)
+        ntu.where(ntu == 0, 1, inplace=True)
+        result = sup * cir * ntu
 
+        result['category'] = 'ALL'
+        result['value'] = 'sup_parc'
+        result['sector'] = __SECTEUR__
+        result = result[entete]
+        table_of_intrant = pd.concat([table_of_intrant, result],
+                                 ignore_index=True)
+    else:
+        result = np.zeros((7, 8))
+        result = pd.DataFrame(result, columns=__BATIMENT__)
+        result['category'] = 'ALL'
+        result['value'] = 'sup_parc'
+        result['sector'] = __SECTEUR__
+        result = result[entete]
+        table_of_intrant = pd.concat([table_of_intrant, result],
+                                 ignore_index=True)
 
-
-
+    # Decontamination
+    decont = sh.cell(67, 2).value
+    result = -1*decont * np.ones((7, 8))
+    result = pd.DataFrame(result, columns=__BATIMENT__)
+    result['category'] = 'ALL'
+    result['value'] = 'decont'
+    result['sector'] = __SECTEUR__
+    result = result[entete]
+    table_of_intrant = pd.concat([table_of_intrant, result],
+                             ignore_index=True)
 
     # 1- sup_ter: superficie de terrain (will be removed if the information is provided);
     # 2- tum: taille des unites;
@@ -436,7 +470,7 @@ def get_cb1_characteristics(workbook) -> pd.DataFrame:
 
     value_to_return = ['sup_ter', 'tum', 'tuf', 'vat', 'denm_p', 'ces', 'pptu', 'cir', 'aec', 'si', 'pi_si', 'ee_ss',
                        'pi_ee', 'min_ne', 'max_ne', 'suptu', 'supbtu', 'sup_com', 'sup_tot_hs', 'pisc', 'sup_ss', 'ppts',
-                       'ntu', 'supt_cu', 'pp_et_escom', 'pptu', 'cub', 'price', 'cont_soc']
+                       'ntu', 'supt_cu', 'pp_et_escom', 'pptu', 'cub', 'price', 'cont_soc', 'sup_parc', 'decont']
 
     return table_of_intrant[table_of_intrant['value'].isin(value_to_return)]
 

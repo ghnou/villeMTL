@@ -4,12 +4,13 @@ import numpy as np
 import pandas as pd
 import xlrd
 
-from import_parameter import get_land_param, get_building_cost_parameter
+from import_parameter import get_building_cost_parameter
 from lexique import __UNITE_TYPE__, __QUALITE_BATIMENT__, __COUTS_FILES_NAME__, __BATIMENT__, __SECTEUR__
 from obtention_intrant import get_cb1_characteristics
 
 
 def ajouter_caraterisque_par_type_unite(sh, tab, name, pos, unique):
+
     for unite in __UNITE_TYPE__:
         _ = [unite, 'ALL', name]
         line = pos[0] if unique else __UNITE_TYPE__.index(unite) + pos[0]
@@ -21,26 +22,6 @@ def ajouter_caraterisque_par_type_unite(sh, tab, name, pos, unique):
     return tab
 
 
-def calcul_prix_terrain(densite, superficie):
-
-    terrain_param = get_land_param(myBook)
-
-    augmentation_valeur = (
-                1 + terrain_param[terrain_param['Value'] == 'aug valeur'][__BATIMENT__].reset_index(drop=True)).astype(
-        float)
-
-    value = (terrain_param[terrain_param['Value'] == 'valeur prox'][__BATIMENT__].reset_index(drop=True) +
-             terrain_param[terrain_param['Value'] == 'multi de densite'][__BATIMENT__].reset_index(
-                 drop=True) * densite).astype(float)
-
-    mutation = terrain_param[terrain_param['Value'] == 'mutation'][__BATIMENT__].reset_index(drop=True).astype(float)
-
-    prix = np.exp(value) * augmentation_valeur * superficie + mutation
-    print(prix)
-
-    # print(prix)
-
-
 def get_qu(group, dict_of_qu):
     tab = [group[batiment].map(dict_of_qu).values.tolist() for batiment in __BATIMENT__]
     tab = np.array(tab).transpose()
@@ -50,7 +31,14 @@ def get_qu(group, dict_of_qu):
     return tab
 
 
-def apply_mutation_function(x):
+def apply_mutation_function(x) -> float:
+
+    """"
+    This Function is used to compute the frais de mutation.
+    :param x: Price of the land
+    :return frais de mutation.
+
+     """
     if x >= 1007000:
         return (x - 1007000) * 0.025 + 16111.5
     elif x >= 503500:
@@ -63,7 +51,25 @@ def apply_mutation_function(x):
         return x * 0.005
 
 
-def calcul_cout_batiment(table_of_intrant, cost_param, secteur, batiment, myBook):
+def calcul_cout_batiment(table_of_intrant, cost_param, secteur, batiment, myBook) ->pd.DataFrame:
+
+    """""
+    This function is used to compute the cost of a builiding given a specific sector.
+
+    :param
+    table_of_intrant (pd.DataFrame):  The table containing all the building useful information necessary to compute the costs.
+
+    cost_param (pd.DataFrame): A dataframe containing all the cost units params.
+
+    secteur (str): sector of the building
+
+    batiment (range): range containing the building we want to compute the costs. eg: ['B1', 'B7']
+
+    :return
+
+    cout_result (pd.Dataframe)
+
+    """""
 
     # Coquille
     tc = cost_param[(cost_param['value'] == 'tcq') & (cost_param['category'] == 'ALL')].reset_index(drop=True)
@@ -401,6 +407,7 @@ def calcul_cout_batiment(table_of_intrant, cost_param, secteur, batiment, myBook
     cout_result = pd.concat([cout_result, result],
                             ignore_index=True)
 
+
     # Total soft Cost
     su = cout_result[(cout_result['value'].isin(['apt_geo', 'prof', 'eval', 'legal_fee', 'prof_fee_div', 'pub',
                                                  'construction_permit', 'com']))
@@ -414,6 +421,7 @@ def calcul_cout_batiment(table_of_intrant, cost_param, secteur, batiment, myBook
     cout_result = pd.concat([cout_result, su],
                             ignore_index=True)
 
+
     # Land price
     sup_ter = table_of_intrant[(table_of_intrant['value'] == 'sup_ter') & (table_of_intrant['category'] == 'ALL')][
         batiment].reset_index(drop=True)
@@ -422,14 +430,86 @@ def calcul_cout_batiment(table_of_intrant, cost_param, secteur, batiment, myBook
         batiment].reset_index(drop=True)
 
     price_land = vat * sup_ter
-    print(price_land)
+
     fm = []
     for value in batiment:
         fm.append(price_land[value].transform(lambda x: apply_mutation_function(x)).values[0])
+    # Cout attribution terrain
+    result = price_land + fm
+    result['category'] = 'unique'
+    result["value"] = 'caq_ter'
+    result['sector'] = secteur
+    result = result[cost_param.columns]
 
-    # Contribution sociale cont_soc
+    cout_result = pd.concat([cout_result, result],
+                            ignore_index=True)
+    #Contribution sociale
+    supbtu = table_of_intrant[(table_of_intrant['value'] == 'supbtu') & (table_of_intrant['category'] == 'ALL')][
+        batiment].reset_index(drop=True)
 
-    # return cout_result
+    cont_soc = table_of_intrant[(table_of_intrant['value'] == 'cont_soc') & (table_of_intrant['category'] == 'ALL')][
+        batiment].reset_index(drop=True)
+
+    result = supbtu * cont_soc
+    result['category'] = 'unique'
+    result["value"] = 'cont_soc'
+    result['sector'] = secteur
+    result = result[cost_param.columns]
+    cout_result = pd.concat([cout_result, result],
+                            ignore_index=True)
+
+    # Frais de parc
+    sup_parc = table_of_intrant[(table_of_intrant['value'] == 'sup_parc') & (table_of_intrant['category'] == 'ALL')][
+        batiment].reset_index(drop=True)
+    result = (sup_parc * price_land * 0.1/ supbtu)
+    result['category'] = 'unique'
+    result["value"] = 'frais_parc'
+    result['sector'] = secteur
+    result = result[cost_param.columns]
+    cout_result = pd.concat([cout_result, result],
+                            ignore_index=True)
+
+    # Decontamination
+    decont = table_of_intrant[(table_of_intrant['value'] == 'decont') & (table_of_intrant['category'] == 'ALL')][
+        batiment].reset_index(drop=True)
+    result = decont * sup_ter
+    result['category'] = 'unique'
+    result["value"] = 'decont'
+    result['sector'] = secteur
+    result = result[cost_param.columns]
+    cout_result = pd.concat([cout_result, result],
+                            ignore_index=True)
+
+    # Sous Total Terrain
+    su = cout_result[(cout_result['value'].isin(['caq_ter', 'cont_soc', 'frais_parc', 'decont']))
+                     & (cout_result['category'] == 'unique')][['sector'] + batiment].reset_index(drop=True)
+
+    su = su.groupby('sector').sum().reset_index(drop=True)
+    su['category'] = 'partial'
+    su['sector'] = secteur
+    su['value'] = 'financement terrain'
+    su = su[cost_param.columns]
+    cout_result = pd.concat([cout_result, su],
+                            ignore_index=True)
+
+    # Cout total du projet
+
+    tot = cout_result[cout_result['category'] == 'partial'][['sector'] + batiment].reset_index(drop=True)
+    tot = tot.groupby('sector').sum().reset_index(drop=True)
+    tot['category'] = 'total'
+    tot['sector'] = secteur
+    tot['value'] = 'cout total du projet'
+    tot = tot[cost_param.columns]
+    cout_result = pd.concat([cout_result, tot],
+                            ignore_index=True)
+
+    # Other Params
+
+    cout_result = pd.concat([cout_result, table_of_intrant[table_of_intrant['value'] == 'ntu'],
+                            table_of_intrant[table_of_intrant['value'] == 'price']],
+                            ignore_index=True)
+
+    return cout_result
 
 
 
@@ -443,6 +523,4 @@ if __name__ == '__main__':
     intrant_param = intrant_param[(intrant_param['sector'] == 'Secteur 7') & (intrant_param['value'] != 'pptu')]
     cost_param = cost_param[['sector', 'category', 'value', 'B1', 'B3', 'B8']]
     cost_param = cost_param[cost_param['sector'] == 'Secteur 7']
-
-    # calcul_prix_terrain(0,0,0,0)
     print(calcul_cout_batiment(intrant_param, cost_param, 'Secteur 7', ['B1', 'B3', 'B8'], myBook))
