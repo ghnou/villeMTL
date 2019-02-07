@@ -6,7 +6,7 @@ import xlrd
 
 from import_parameter import get_building_cost_parameter
 from lexique import __UNITE_TYPE__, __QUALITE_BATIMENT__, __COUTS_FILES_NAME__, __BATIMENT__, __SECTEUR__
-from obtention_intrant import get_cb1_characteristics
+from obtention_intrant import get_cb1_characteristics, get_cb4_characteristics
 
 
 def ajouter_caraterisque_par_type_unite(sh, tab, name, pos, unique):
@@ -64,6 +64,23 @@ def calcul_cout_batiment(table_of_intrant, cost_param, secteur, batiment, myBook
     secteur (str): sector of the building
 
     batiment (range): range containing the building we want to compute the costs. eg: ['B1', 'B7']
+    
+    sup_tot_hs
+    sup_ss
+    suptu
+    ntu
+    supbtu
+    cir
+    pisc
+    cub
+    sup_com
+    decont
+    sup_parc
+    cont_soc
+    vat
+    sup_ter
+    price
+    
 
     :return
 
@@ -399,6 +416,7 @@ def calcul_cout_batiment(table_of_intrant, cost_param, secteur, batiment, myBook
     com = cost_param[(cost_param['value'] == 'com') & (cost_param['category'] == 'ALL')].reset_index(drop=True)
     price = table_of_intrant[(table_of_intrant['value'] == 'price') & (table_of_intrant['category'] == 'ALL')][
         batiment].reset_index(drop=True)
+    print(price)
     result = com[batiment] * price
     result[['sector', 'value']] = com[['sector', 'value']]
     result['category'] = 'unique'
@@ -429,7 +447,7 @@ def calcul_cout_batiment(table_of_intrant, cost_param, secteur, batiment, myBook
     vat = table_of_intrant[(table_of_intrant['value'] == 'vat') & (table_of_intrant['category'] == 'ALL')][
         batiment].reset_index(drop=True)
 
-    price_land = vat * sup_ter
+    price_land = vat.astype(float) * sup_ter.astype(float)
 
     fm = []
     for value in batiment:
@@ -450,7 +468,7 @@ def calcul_cout_batiment(table_of_intrant, cost_param, secteur, batiment, myBook
     cont_soc = table_of_intrant[(table_of_intrant['value'] == 'cont_soc') & (table_of_intrant['category'] == 'ALL')][
         batiment].reset_index(drop=True)
 
-    result = supbtu * cont_soc
+    result = supbtu.astype(float) * cont_soc.astype(float)
     result['category'] = 'unique'
     result["value"] = 'cont_soc'
     result['sector'] = secteur
@@ -472,7 +490,7 @@ def calcul_cout_batiment(table_of_intrant, cost_param, secteur, batiment, myBook
     # Decontamination
     decont = table_of_intrant[(table_of_intrant['value'] == 'decont') & (table_of_intrant['category'] == 'ALL')][
         batiment].reset_index(drop=True)
-    result = decont * sup_ter
+    result = decont.astype(float) * sup_ter.astype(float)
     result['category'] = 'unique'
     result["value"] = 'decont'
     result['sector'] = secteur
@@ -504,23 +522,25 @@ def calcul_cout_batiment(table_of_intrant, cost_param, secteur, batiment, myBook
                             ignore_index=True)
 
     # Other Params
-
+    cout_result[cout_result['category'] == 'partial'].to_csv('t.txt')
     cout_result = pd.concat([cout_result, table_of_intrant[table_of_intrant['value'] == 'ntu'],
                             table_of_intrant[table_of_intrant['value'] == 'price']],
                             ignore_index=True)
 
     return cout_result
 
-
-
-
 if __name__ == '__main__':
     myBook = xlrd.open_workbook(__COUTS_FILES_NAME__)
     intrant_param = get_cb1_characteristics(myBook)
     cost_param = get_building_cost_parameter(myBook)
 
+    intrant_param = get_cb4_characteristics(intrant_param, "Secteur 7", 5389.0, None, None, None, None)
+
     intrant_param = intrant_param[['sector', 'category', 'value', 'B1', 'B3', 'B8']]
-    intrant_param = intrant_param[(intrant_param['sector'] == 'Secteur 7') & (intrant_param['value'] != 'pptu')]
+    intrant_param = intrant_param[(intrant_param['sector'] == 'Secteur 7')]
+
     cost_param = cost_param[['sector', 'category', 'value', 'B1', 'B3', 'B8']]
     cost_param = cost_param[cost_param['sector'] == 'Secteur 7']
-    print(calcul_cout_batiment(intrant_param, cost_param, 'Secteur 7', ['B1', 'B3', 'B8'], myBook))
+
+    print(calcul_cout_batiment(intrant_param, cost_param, 'Secteur 7', ['B1', 'B3', 'B8'], myBook)[
+              ['category', 'value', 'B1', 'B3', 'B8']])

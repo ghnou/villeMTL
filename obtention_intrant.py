@@ -39,6 +39,7 @@ def convert_unity_type_to_sum_sector(group, data):
 
 def convert_unity_type_to_sector(group, data):
     df = data[__BATIMENT__].mul(group[__BATIMENT__].values.tolist()[0], axis=1)
+
     df['category'] = group.name
     df['sector'] = data['sector']
     df['value'] = data['value']
@@ -77,6 +78,16 @@ def calculate_total_surface(group):
     return df
 
 
+def calculate_total_unit(group):
+    df = group[group['value'] == 'suptu'][__BATIMENT__].reset_index(drop=True) / \
+         group[group['value'] == 'tum'][__BATIMENT__].reset_index(drop=True)
+    df['category'] = group.name
+    df['sector'] = group[group['value'] == 'tum']['sector'].reset_index(drop=True)
+    df['value'] = 'ntu'
+
+    return df
+
+
 def get_mean_brute_surface(group, data):
     df = group[__BATIMENT__].reset_index(drop=True).mul(data[data['sector'] == group.name][__BATIMENT__].values[0],
                                                         axis='columns')
@@ -88,7 +99,7 @@ def get_mean_brute_surface(group, data):
 
 
 def get_cb1_characteristics(workbook) -> pd.DataFrame:
-
+    global fp_exig
     """
         This function takes all the parameters of the Intrants sheets and calculate all the characteristics
         of the CB1 sheet.
@@ -181,9 +192,15 @@ def get_cb1_characteristics(workbook) -> pd.DataFrame:
     # TODO : Add the pptu given the scenarios
 
     # Add number of unity by unity type
+
     t = ajouter_caraterisque_par_type_unite(sh, [], 'pptu', [100, 3], False)
     t = pd.DataFrame(t, columns=entete)
-    table_of_intrant = pd.concat([table_of_intrant, t], ignore_index=True)
+    x = ajouter_caraterisque_par_type_unite(sh, [], 'ppts', [109, 3], False)
+    x = pd.DataFrame(x, columns=entete)
+
+    table_of_intrant = pd.concat([table_of_intrant, t, x], ignore_index=True)
+
+
     ntu = table_of_intrant[table_of_intrant['value'] == 'ntu'][__BATIMENT__ + ['sector', 'value']]
     result = t.groupby('sector').apply(convert_unity_type_to_sector, ntu).reset_index(drop=True)
     result = result[entete]
@@ -210,6 +227,7 @@ def get_cb1_characteristics(workbook) -> pd.DataFrame:
     result = result.groupby('category').apply(get_surface, dict_of_surface).reset_index(drop=True)
     result = result[entete]
     table_of_intrant = table_of_intrant[table_of_intrant['value'] != 'tum']
+
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
 
     # Total Surface by unity type
@@ -529,7 +547,7 @@ def get_cb3_characteristics(table_of_intrant, *args) -> pd.DataFrame:
     pptu = table_of_intrant[table_of_intrant['value'] == 'pptu'].sort_values(by=['sector'])
     if secteur is not None:
         table_of_intrant = table_of_intrant[(table_of_intrant['sector'] == secteur) & (table_of_intrant['value'] != 'pptu')]
-    drop_value = ['ntu', 'sup_tot_hs', 'supbtu', 'sup_com']
+    drop_value = ['ntu', 'sup_tot_hs', 'supbtu', 'sup_com', 'suptu', 'sup_ss']
 
     for value in range(1, len(args)):
         if args[value] is not None:
@@ -578,7 +596,8 @@ def get_cb3_characteristics(table_of_intrant, *args) -> pd.DataFrame:
 
     # Brute surface of 1 floor
     ces = table_of_intrant[(table_of_intrant['value'] == 'ces') & (table_of_intrant['category'] == 'ALL')]
-    result = land_surface_p[__BATIMENT__].reset_index(drop=True).astype(float)  * ces[__BATIMENT__].reset_index(drop=True)
+    result = land_surface_p[__BATIMENT__].reset_index(drop=True).astype(float) * ces[__BATIMENT__].reset_index(
+        drop=True)
     result['category'] = 'ALL'
     result['value'] = 'sup_bru_one_floor'
     result['sector'] = secteur
@@ -601,12 +620,23 @@ def get_cb3_characteristics(table_of_intrant, *args) -> pd.DataFrame:
 
     sup_tot_hs = table_of_intrant[(table_of_intrant['value'] == 'sup_tot_hs') & (table_of_intrant['category'] == 'ALL')]
     result = sup_tot_hs[__BATIMENT__].reset_index(drop=True) - sup_com - supt_cu
+    suptu = result * (1 - cir)
+
     result['category'] = 'ALL'
     result['value'] = 'supbtu'
     result['sector'] = secteur
     result = result[entete]
-    table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
 
+    sup_com['category'] = 'ALL'
+    sup_com['value'] = 'sup_com'
+    sup_com['sector'] = secteur
+    sup_com = sup_com[entete]
+
+    suptu['category'] = 'ALL'
+    suptu['value'] = 'suptu'
+    suptu['sector'] = secteur
+    suptu = suptu[entete]
+    table_of_intrant = pd.concat([table_of_intrant, result, sup_com, suptu], ignore_index=True)
 
 
     # --> Surface brute per unit
@@ -649,10 +679,12 @@ def get_cb3_characteristics(table_of_intrant, *args) -> pd.DataFrame:
 
     # Number of units
     ntu = nmu_et[__BATIMENT__].reset_index(drop=True) * floor_hs
+    ntu = ntu.round(2)
     ntu['category'] = 'ALL'
     ntu['value'] = 'ntu'
     ntu['sector'] = sup_bru_par_u['sector'].reset_index(drop=True)
     ntu = ntu[entete]
+
     table_of_intrant = pd.concat([table_of_intrant, result],
                                  ignore_index=True)
 
@@ -663,12 +695,14 @@ def get_cb3_characteristics(table_of_intrant, *args) -> pd.DataFrame:
     ntu = ntu[__BATIMENT__ + ['sector', 'value']]
     result = pptu.groupby('sector').apply(convert_unity_type_to_sector, ntu).reset_index(drop=True)
     result = result[entete]
+    print(result)
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
 
     result = result[__BATIMENT__].groupby(result['sector']).sum().reset_index()
     result['category'] = 'ALL'
     result['value'] = 'ntu'
     result = result[entete]
+    print(result)
     table_of_intrant = pd.concat([table_of_intrant, result],
                                  ignore_index=True)
 
@@ -697,9 +731,358 @@ def get_cb3_characteristics(table_of_intrant, *args) -> pd.DataFrame:
     result['value'] = 'ppts'
     result['sector'] = ['Secteur ' + str(i) for i in range(1, 8)]
     result = result[entete]
-    print(result)
+
+    # superfice sous sol
+
+    cir = table_of_intrant[(table_of_intrant['value'] == 'cir') & (table_of_intrant['category'] == 'ALL')][
+        __BATIMENT__].reset_index(drop=True).astype(float)
+
+    aec = table_of_intrant[(table_of_intrant['value'] == 'aec') & (table_of_intrant['category'] == 'ALL')][
+        __BATIMENT__].reset_index(drop=True).astype(float)
+
+    si = table_of_intrant[(table_of_intrant['value'] == 'si') & (table_of_intrant['category'] == 'ALL')][
+        __BATIMENT__].reset_index(drop=True).astype(float)
+
+    pi_si = table_of_intrant[(table_of_intrant['value'] == 'pi_si') & (table_of_intrant['category'] == 'ALL')][
+        __BATIMENT__].reset_index(drop=True).astype(float)
+
+    ee_ss = table_of_intrant[(table_of_intrant['value'] == 'ee_ss') & (table_of_intrant['category'] == 'ALL')][
+        __BATIMENT__].reset_index(drop=True).astype(float)
+
+    pi_ee = table_of_intrant[(table_of_intrant['value'] == 'pi_ee') & (table_of_intrant['category'] == 'ALL')][
+        __BATIMENT__].reset_index(drop=True).astype(float)
+
+    ntu = table_of_intrant[(table_of_intrant['value'] == 'ntu') & (table_of_intrant['category'] == 'ALL')][
+        __BATIMENT__].reset_index(drop=True).astype(float)
+
+    sup_tot_hs = \
+        table_of_intrant[(table_of_intrant['value'] == 'sup_tot_hs') & (table_of_intrant['category'] == 'ALL')][
+            __BATIMENT__].reset_index(drop=True).astype(float)
+
+    result = (ntu * (ee_ss * pi_ee + si * pi_si) / (1 - cir) + sup_tot_hs) / (1 - aec) - sup_tot_hs
+    result['category'] = 'ALL'
+    result['value'] = 'sup_ss'
+    result['sector'] = secteur
+    result = result[entete]
+
+    table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
+    table_of_intrant.drop(table_of_intrant[(table_of_intrant['value'] == 'price') &
+                                           (table_of_intrant['category'] == 'ALL')].index, inplace=True)
+    table_of_intrant.drop(table_of_intrant[table_of_intrant['value'] == 'sup_parc'].index, inplace=True)
+
+    # Price
+
+    # Calcul total revenue
+    tot = table_of_intrant[((table_of_intrant['value'] == 'ntu') | (table_of_intrant['value'] == 'price'))
+                           & (table_of_intrant['category'] != 'ALL')]
+
+    result = (tot.groupby(tot['category']).apply(calculate_price).reset_index(drop=True))
+    result = result.groupby('sector').sum().reset_index()
+
+    result['category'] = 'ALL'
+    result['value'] = 'price'
+    result = result[entete]
+    table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
+
+    if fp_exig == 'Oui':
+        sup = table_of_intrant[(table_of_intrant['value'] == 'suptu')
+                               & (table_of_intrant['category'].isin(__UNITE_TYPE__[0:3]))]
+        sup = sup[__BATIMENT__].groupby(sup['sector']).sum().reset_index(drop=True)
+        cir = 1 + table_of_intrant[(table_of_intrant['value'] == 'cir')][__BATIMENT__].reset_index(drop=True)
+        ntu = table_of_intrant[(table_of_intrant['value'] == 'ntu')
+                               & (table_of_intrant['category'] == 'ALL')][__BATIMENT__].reset_index(drop=True)
+        ntu.where(ntu > 2, 0, inplace=True)
+        ntu.where(ntu == 0, 1, inplace=True)
+        result = sup * cir * ntu
+
+        result['category'] = 'ALL'
+        result['value'] = 'sup_parc'
+        result['sector'] = secteur
+        result = result[entete]
+        table_of_intrant = pd.concat([table_of_intrant, result],
+                                     ignore_index=True)
+    else:
+        result = np.zeros((7, 8))
+        result = pd.DataFrame(result, columns=__BATIMENT__)
+        result['category'] = 'ALL'
+        result['value'] = 'sup_parc'
+        result['sector'] = secteur
+        result = result[entete]
+        table_of_intrant = pd.concat([table_of_intrant, result],
+                                     ignore_index=True)
+    print(table_of_intrant[table_of_intrant['value'].isin(['sup_tot_hs', 'sup_ss', 'suptu', 'ntu', 'supbtu', 'cir',
+                                                           'pisc', 'cub', 'sup_com', 'decont', 'sup_parc', 'cont_soc',
+                                                           'vat', 'sup_ter', 'price'])][['category', 'value', 'B1']])
+    return table_of_intrant[table_of_intrant['value'].isin(['sup_tot_hs', 'sup_ss', 'suptu', 'ntu', 'supbtu', 'cir',
+                                                            'pisc', 'cub', 'sup_com', 'decont', 'sup_parc', 'cont_soc',
+                                                            'vat', 'sup_ter', 'price'])]
+
+
+def get_cb4_characteristics(table_of_intrant, *args) -> pd.DataFrame:
+    """
+        This function takes all the parameters of from the CB1 and calculate all the characteristics
+        of the CB3 sheet.
+
+        :param
+        data: Dataframe containing all the intrants informations and the calculations of CB1.
+
+        args: Parameter to specify the input varialble for computation, namely superficie de terrain, densite maximale
+        permise, CES, nombre etage min and max. If the args are not provided the calculations would be made with the
+        default values in the Intrants sheets.
+        args = ['secteur', 'superficie terrain', 'densite, ces, min_ne, max_ne]
+
+        The Data countains the following variables for Intrants:
+
+        1- sup_ter: superficie de terrain (will be removed if the information is provided);
+        2- tum: taille des unites;
+        3- tuf: taille des unites familiales;
+        4- vat: valeur de terrain;
+        5- denm_p: densite maximale permise;
+        6- ces: coefficient d' emprise au sol;
+        7- pptu: proprtion en terme unite;
+        8- cir: circulation (hors sol et sous sol)-%;
+        9- aec: autres espaces communs;
+        10- si: stationnement interieur;
+        11- pi_si: pied carre par stationnement interieur;
+        12- ee_ss: espaces d'entreposage sous sol;
+        13- pi_ee: pied carre par espace entreposage;
+        14- min_ne: min nombre etages;
+        15- max_ne: max nombre etages;
+        16- suptu: superficie totale des unites-Type;
+        17- supbtu: superficie brute unites (unite + circulation);
+        18- sup_com: superficie commerce;
+        20- pisc: piscine (non incluse);
+        21- sup_ss: superfice sous sol;
+        22- ppts: Proportion en terme de superficie totale;
+        supt_cu
+        :return: pd.Dataframe of all the characteristics of the CB1 sheet.
+        
+        sup_tot_hs add
+    sup_ss 
+    suptu add
+    ntu add
+    supbtu add
+    cir in
+    pisc in
+    cub in
+    sup_com add
+    decont in
+    sup_parc in
+    cont_soc in
+    vat in 
+    sup_ter add  
+
+        """""
+
+    input_var = ['sector', 'sup_ter', 'denm_p', 'ces', 'min_ne', 'max_ne']
+
+    entete = ['sector', 'category', 'value'] + __BATIMENT__
+
+    secteur = args[0]
+    sup_ter = args[1]
+    denm_p = args[2]
+    ces = args[3]
+    min_ne = args[4]
+    max_ne = args[5]
+    ppts = table_of_intrant[table_of_intrant['value'] == 'ppts'].sort_values(by=['sector'])
+    if secteur is not None:
+        table_of_intrant = table_of_intrant[(table_of_intrant['sector'] == secteur)]
+    drop_value = ['ntu', 'sup_tot_hs', 'supbtu', 'sup_com', 'suptu', 'sup_ss']
+
+    for value in range(1, len(args)):
+        if args[value] is not None:
+            drop_value.append(input_var[value])
+
+    table_of_intrant = table_of_intrant[table_of_intrant['value'].isin(drop_value) == False]
+
+    if sup_ter is not None:
+        v = pd.DataFrame([np.append([secteur, 'ALL', 'sup_ter'], sup_ter * np.ones(len(__BATIMENT__)))],
+                         columns=table_of_intrant.columns)
+        table_of_intrant = pd.concat([table_of_intrant, v], ignore_index=True)
+
+    if denm_p is not None:
+        v = pd.DataFrame([np.append([secteur, 'ALL', 'denm_p'], denm_p * np.ones(len(__BATIMENT__)))],
+                         columns=table_of_intrant.columns)
+        table_of_intrant = pd.concat([table_of_intrant, v], ignore_index=True)
+
+    if ces is not None:
+        v = pd.DataFrame([np.append([secteur, 'ALL', 'ces'], ces * np.ones(len(__BATIMENT__)))],
+                         columns=table_of_intrant.columns)
+        table_of_intrant = pd.concat([table_of_intrant, v], ignore_index=True)
+
+    if min_ne is not None:
+        v = pd.DataFrame([np.append([secteur, 'ALL', 'min_ne'], min_ne * np.ones(len(__BATIMENT__)))],
+                         columns=table_of_intrant.columns)
+        table_of_intrant = pd.concat([table_of_intrant, v], ignore_index=True)
+
+    if max_ne is not None:
+        v = pd.DataFrame([np.append([secteur, 'ALL', 'max_ne'], max_ne * np.ones(len(__BATIMENT__)))],
+                         columns=table_of_intrant.columns)
+        table_of_intrant = pd.concat([table_of_intrant, v], ignore_index=True)
+
+    land_surface_p = table_of_intrant[
+        (table_of_intrant['value'] == 'sup_ter') & (table_of_intrant['category'] == 'ALL')]
+    den_max_per = table_of_intrant[
+        (table_of_intrant['value'] == 'denm_p') & (table_of_intrant['category'] == 'ALL')]
+
+    # Superficice brute totale hors sol
+
+    result = land_surface_p[__BATIMENT__].reset_index(drop=True).astype(float) * den_max_per[__BATIMENT__].reset_index(
+        drop=True)
+    result['category'] = 'ALL'
+    result['value'] = 'sup_tot_hs'
+    result['sector'] = secteur
+    result = result[entete]
+    table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
+
+    # Brute surface of 1 floor
+    ces = table_of_intrant[(table_of_intrant['value'] == 'ces') & (table_of_intrant['category'] == 'ALL')]
+    result = land_surface_p[__BATIMENT__].reset_index(drop=True).astype(float) * ces[__BATIMENT__].reset_index(
+        drop=True)
+    result['category'] = 'ALL'
+    result['value'] = 'sup_bru_one_floor'
+    result['sector'] = secteur
+    result = result[entete]
     table_of_intrant = pd.concat([table_of_intrant, result],
                                  ignore_index=True)
+    # Total Brute Surface
+    cir = table_of_intrant[(table_of_intrant['value'] == 'cir') & (table_of_intrant['category'] == 'ALL')][
+        __BATIMENT__].reset_index(drop=True)
+
+    # --> Surface Brute common surface
+    supt_cu = table_of_intrant[(table_of_intrant['value'] == 'supt_cu') & (table_of_intrant['category'] == 'ALL')][
+        __BATIMENT__].reset_index(drop=True)
+    supt_cu = supt_cu / (1 - cir)
+    # --> Surface commerce
+    pp_et_escom = table_of_intrant[
+        (table_of_intrant['value'] == 'pp_et_escom') & (table_of_intrant['category'] == 'ALL')]
+    sup_com = result[__BATIMENT__] * pp_et_escom[__BATIMENT__].reset_index(drop=True)
+    sup_tot_hs = table_of_intrant[(table_of_intrant['value'] == 'sup_tot_hs') & (table_of_intrant['category'] == 'ALL')]
+    result = sup_tot_hs[__BATIMENT__].reset_index(drop=True) - sup_com - supt_cu
+    suptu = result * (1 - cir)
+
+    result['category'] = 'ALL'
+    result['value'] = 'supbtu'
+    result['sector'] = secteur
+    result = result[entete]
+
+    sup_com['category'] = 'ALL'
+    sup_com['value'] = 'sup_com'
+    sup_com['sector'] = secteur
+    sup_com = sup_com[entete]
+
+    suptu['category'] = 'ALL'
+    suptu['value'] = 'suptu'
+    suptu['sector'] = secteur
+    suptu = suptu[entete]
+    table_of_intrant = pd.concat([table_of_intrant, result, sup_com, suptu], ignore_index=True)
+
+    # Calcul des superfices totales des unites selon la typologie
+    suptu = table_of_intrant[table_of_intrant['value'] == 'suptu'][__BATIMENT__ + ['sector', 'value']]
+    result = ppts.groupby('sector').apply(convert_unity_type_to_sector, suptu).reset_index(drop=True)
+    result = result[entete]
+    table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
+
+    # Nombre d'unite
+    # Total Surface by unity type
+
+    ntu = table_of_intrant[(table_of_intrant['value'] == 'tum') | (table_of_intrant['value'] == 'suptu') & (
+            table_of_intrant['category'] != 'ALL')]
+    result = ntu.groupby('category').apply(calculate_total_unit).reset_index(drop=True)
+    result = result[entete]
+    table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
+
+    result = result[__BATIMENT__].groupby(result['sector']).sum()
+    result['category'] = 'ALL'
+    result['value'] = 'ntu'
+    result['sector'] = secteur
+    result = result[entete]
+
+    table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
+
+    # superfice sous sol
+
+    cir = table_of_intrant[(table_of_intrant['value'] == 'cir') & (table_of_intrant['category'] == 'ALL')][
+        __BATIMENT__].reset_index(drop=True).astype(float)
+
+    aec = table_of_intrant[(table_of_intrant['value'] == 'aec') & (table_of_intrant['category'] == 'ALL')][
+        __BATIMENT__].reset_index(drop=True).astype(float)
+
+    si = table_of_intrant[(table_of_intrant['value'] == 'si') & (table_of_intrant['category'] == 'ALL')][
+        __BATIMENT__].reset_index(drop=True).astype(float)
+
+    pi_si = table_of_intrant[(table_of_intrant['value'] == 'pi_si') & (table_of_intrant['category'] == 'ALL')][
+        __BATIMENT__].reset_index(drop=True).astype(float)
+
+    ee_ss = table_of_intrant[(table_of_intrant['value'] == 'ee_ss') & (table_of_intrant['category'] == 'ALL')][
+        __BATIMENT__].reset_index(drop=True).astype(float)
+
+    pi_ee = table_of_intrant[(table_of_intrant['value'] == 'pi_ee') & (table_of_intrant['category'] == 'ALL')][
+        __BATIMENT__].reset_index(drop=True).astype(float)
+
+    ntu = table_of_intrant[(table_of_intrant['value'] == 'ntu') & (table_of_intrant['category'] == 'ALL')][
+        __BATIMENT__].reset_index(drop=True).astype(float)
+
+    sup_tot_hs = \
+        table_of_intrant[(table_of_intrant['value'] == 'sup_tot_hs') & (table_of_intrant['category'] == 'ALL')][
+            __BATIMENT__].reset_index(drop=True).astype(float)
+
+    result = (ntu * (ee_ss * pi_ee + si * pi_si) / (1 - cir) + sup_tot_hs) / (1 - aec) - sup_tot_hs
+    result['category'] = 'ALL'
+    result['value'] = 'sup_ss'
+    result['sector'] = secteur
+    result = result[entete]
+
+    table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
+    table_of_intrant.drop(table_of_intrant[(table_of_intrant['value'] == 'price') &
+                                           (table_of_intrant['category'] == 'ALL')].index, inplace=True)
+    table_of_intrant.drop(table_of_intrant[table_of_intrant['value'] == 'sup_parc'].index, inplace=True)
+
+    # Price
+
+    # Calcul total revenue
+    tot = table_of_intrant[((table_of_intrant['value'] == 'ntu') | (table_of_intrant['value'] == 'price'))
+                           & (table_of_intrant['category'] != 'ALL')]
+
+    result = (tot.groupby(tot['category']).apply(calculate_price).reset_index(drop=True))
+    result = result.groupby('sector').sum().reset_index()
+
+    result['category'] = 'ALL'
+    result['value'] = 'price'
+    result = result[entete]
+    table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
+
+    if fp_exig == 'Oui':
+        sup = table_of_intrant[(table_of_intrant['value'] == 'suptu')
+                               & (table_of_intrant['category'].isin(__UNITE_TYPE__[0:3]))]
+        sup = sup[__BATIMENT__].groupby(sup['sector']).sum().reset_index(drop=True)
+        cir = 1 + table_of_intrant[(table_of_intrant['value'] == 'cir')][__BATIMENT__].reset_index(drop=True)
+        ntu = table_of_intrant[(table_of_intrant['value'] == 'ntu')
+                               & (table_of_intrant['category'] == 'ALL')][__BATIMENT__].reset_index(drop=True)
+        ntu.where(ntu > 2, 0, inplace=True)
+        ntu.where(ntu == 0, 1, inplace=True)
+        result = sup * cir * ntu
+
+        result['category'] = 'ALL'
+        result['value'] = 'sup_parc'
+        result['sector'] = secteur
+        result = result[entete]
+        table_of_intrant = pd.concat([table_of_intrant, result],
+                                     ignore_index=True)
+    else:
+        result = np.zeros((7, 8))
+        result = pd.DataFrame(result, columns=__BATIMENT__)
+        result['category'] = 'ALL'
+        result['value'] = 'sup_parc'
+        result['sector'] = secteur
+        result = result[entete]
+        table_of_intrant = pd.concat([table_of_intrant, result],
+                                     ignore_index=True)
+
+    return table_of_intrant[table_of_intrant['value'].isin(['sup_tot_hs', 'sup_ss', 'suptu', 'ntu', 'supbtu', 'cir',
+                                                            'pisc', 'cub', 'sup_com', 'decont', 'sup_parc', 'cont_soc',
+                                                            'vat', 'sup_ter', 'price'])]
+
 
 
 if __name__ == '__main__':

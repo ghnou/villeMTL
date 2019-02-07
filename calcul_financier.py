@@ -1,13 +1,15 @@
-from calcul_de_couts import  calcul_cout_batiment
-import pandas as pd
 import numpy as np
+import pandas as pd
 import xlrd
+
+from calcul_de_couts import calcul_cout_batiment
 from import_parameter import get_building_cost_parameter
-from lexique import __FINANCE_FILES_NAME__,__BATIMENT__, __SECTEUR__, __UNITE_TYPE__, __COUTS_FILES_NAME__,\
+from lexique import __FINANCE_FILES_NAME__, __BATIMENT__, __SECTEUR__, __UNITE_TYPE__, __COUTS_FILES_NAME__, \
     __FINANCE_PARAM_SHEET__, __ECOULEMENT_SHEET__
-from obtention_intrant import get_cb1_characteristics
+from obtention_intrant import get_cb1_characteristics, get_cb4_characteristics
 
 __author__ = 'pougomg'
+
 
 def debut_des_ventes(group, d, fonction_ecoulement):
 
@@ -23,40 +25,154 @@ def debut_des_ventes(group, d, fonction_ecoulement):
     fonction_ecoulement = fonction_ecoulement[[group.name]].reset_index(drop=True)
     f3mo = fonction_ecoulement.loc[0, group.name]
     f3mo_after = fonction_ecoulement.loc[1, group.name]
-    group.where(group > d[group.name], 0, inplace=True)
-    group.where(group == 0, 1, inplace=True)
+
+    group['3'] = group['1'].where(group['1'].astype(int) >= d[group.name], 0)
+    group['3'] = group['3'].where(group['3'] == 0, 1)
 
     t = group.reset_index(drop=True)
-    x1 = (f3mo/3).round(2) * (np.heaviside(t.index - d[group.name] + 1, 0) - np.heaviside(t.index - d[group.name] - 2, 0))
-    x2 = (f3mo_after/3).round(2) * (np.heaviside(t.index - d[group.name] - 2, 0))
-    # print((x1 + x2))
+    x1 = (f3mo / 3).round(2) * (
+                np.heaviside(t.index - d[group.name] + 2, 0) - np.heaviside(t.index - d[group.name] - 1, 0))
+    x2 = (f3mo_after / 3).round(2) * (np.heaviside(t.index - d[group.name] - 1, 0))
     group['ecoulement'] = x1 + x2
     t = group[['ecoulement']].cumsum()
     t.loc[t.loc[:, 'ecoulement'] > 1, 'ecoulement'] = 0
     group['sum'] = t
     group.loc[group.loc[:, 'sum'] == 0, 'ecoulement'] = 0
-    group.loc[group['sum'].idxmax() + 1 , 'ecoulement'] = 1 - group.loc[:, 'sum'].max()
+    group.loc[group['sum'].idxmax() + 1, 'ecoulement'] = 1 - group.loc[:, 'sum'].max()
 
-    return group[['1', 'ecoulement']]
+    return group[['3', 'ecoulement']]
+
 
 def calcul_ecoulement_et_vente(group, nombre_total_unite):
+    ntu = nombre_total_unite[(nombre_total_unite['category'].isin(__UNITE_TYPE__)) &
+                             (nombre_total_unite['value'] == 'ntu')][[group.name, 'category']].set_index(
+        'category').transpose()
 
-    print(group.name)
-    print(nombre_total_unite)
+    price = nombre_total_unite[(nombre_total_unite['category'].isin(__UNITE_TYPE__)) &
+                               (nombre_total_unite['value'] == 'price')][[group.name, 'category']].set_index(
+        'category').transpose()
+    result = pd.DataFrame([ntu.values[0] for i in range(group.shape[0])], columns=ntu.columns).reset_index(drop=True)
 
-    t = nombre_total_unite[nombre_total_unite['category'].isin(__UNITE_TYPE__)][[group.name, 'category', 'value']].set_index('category').transpose()
+    ecoulement_name = dict()
+    for i in range(len(__UNITE_TYPE__)):
+        ecoulement_name[__UNITE_TYPE__[i]] = str(37 + i)
+    result = result.mul(group['ecoulement'].values, axis=0)
+    price = price[ntu.columns]
+    mul = result.mul(price.values[0], axis=1)
 
-    print(t)
-    return
-    result = pd.DataFrame([t.values[0] for i in range(group.shape[0])], columns=t.columns).reset_index(drop=True)
+    result.rename(columns=ecoulement_name, inplace=True)
 
-    print(result.mul(group['ecoulement'].values, axis=0))
+    result['45'] = result.sum(axis=1)
+    result['46'] = result['45'].cumsum()
 
-    print(t.columns)
+    ecoulement_name = dict()
+    for i in range(len(__UNITE_TYPE__)):
+        ecoulement_name[__UNITE_TYPE__[i]] = str(47 + i)
+    mul.rename(columns=ecoulement_name, inplace=True)
+    mul['54'] = mul.sum(axis=1)
+    result = pd.concat([result, mul], axis=1)
+
+    return result
 
 
+def mid_prcent_unite_vendu(group, d, ntu):
+    batim = group.name
+
+    nu = ntu.reset_index().loc[0, batim]
+    group['6'] = group['46'].where(group['46'] >= nu, 0)
+    group['6'] = group['6'].where(group['6'] == 0, 1)
+
+    group['4'] = group['46'] / nu
+    group['4'] = group['4'].where(group['4'] >= d[batim], 0)
+    group['4'] = group['4'].where(group['4'] == 0, 1)
+
+    return group[['4', '6']]
 
 
+def liv_immeuble(group, d):
+    batim = group.name
+    group = group.cumsum()
+    group.where(group > d[batim], 0, inplace=True)
+    group.where(group == 0, 1, inplace=True)
+    return group
+
+
+def depot_prevente(group, d):
+    group['7'] = ((1 - group['5']) * group['54']).mul(d[group.name])
+    group['s7'] = group['7'].cumsum()
+    group['s4'] = group['4'].cumsum()
+    group['s4'] = group[['s4']].where(group['s4'] == 1, 0)
+    group.loc[group[['s4']].idxmax(), '4'] = 0
+    group['8'] = group['s4'] * group['s7'] + group['4'] * group['7']
+    group['11'] = ((1 - group['5']) * group['54']).mul(1 - d[group.name])
+    group['s5'] = group['5'].cumsum()
+    group['s5'] = group[['s5']].where(group['s5'] == 1, 0)
+    group['12'] = group['s5'] * (group['11'].cumsum())
+    group['13'] = group['5'] * group['54']
+
+    return group[['7', '8', '11', '12', '13']]
+
+
+def sortie_de_fond(group, data, d):
+    terrain = data.loc[data['value'] == 'financement terrain', group.name].values[0]
+    soft_cost = data.loc[data['value'] == 'soft cost', group.name].values[0]
+    hard_cost = data.loc[data['value'] == 'construction cost', group.name].values[0]
+
+    group['15'] = 0
+    group['26'] = 0
+    group.loc[group.head(1).index, '15'] = -1 * terrain
+    group.loc[group.head(1).index, '26'] = d[group.name] * terrain
+
+    group['s5'] = 1 + group['5'].cumsum()
+    group['s5'] = group[['s5']].where(group['s5'] == 1, 0)
+    group['soft_per'] = group['s5'] * group['1']
+    n_soft = group['soft_per'].max()
+
+    group['16'] = -(1 - group['5']) * (soft_cost / n_soft)
+
+    group['17'] = -(group['4'] - group['5']) * (hard_cost / (group['4'].sum() - group['5'].sum()))
+
+    group['18'] = group['15'] + group['16'] + group['17'] + group['26']
+
+    group['s18'] = group['18'].cumsum()
+    group['21'] = -1 * group['s18'] - 0.25 * (terrain + soft_cost + hard_cost)
+    group['21'] = group[['21']].where(group['21'] > 0, 0)
+    group['21'] = group[['21']].where(group['21'] == 0, 1)
+    group['19'] = (1 - group['21']) * group['18']
+    # group['20'] = (1 - group['19']) * group['18']
+    group['20'] = group['18'].where(group['19'] != 0, group['18'])
+    group['20'] = group['20'].where(group['19'] == 0, 0)
+    group['60'] = group['4'] + group['21']
+    group['61'] = group[['60']].where(group['60'] == 2, 0)
+    group['61'] = group[['61']].where(group['61'] == 0, 1)
+
+    return group[['15', '16', '17', '18', '19', '20', '21', '26', '60', '61']]
+
+
+def financement_terrain(group, d):
+    # print(group)
+    group['s60'] = group[['60']].where(group['60'] >= 2, 1)
+    group['s60'] = group[['s60']].where(group['s60'] == 1, 0)
+
+    rate = (1 + d[group.name] / 2) ** (1 / 6) - 1
+    rate_tab = [(1 + rate) ** (i) for i in range(group.shape[0])]
+    group['rate'] = rate_tab
+
+    group['t'] = group['26'].max()
+    group['27'] = group['t'] * group['rate'] * group['s60']
+    group['29'] = group['27'] * rate
+
+    index = group[group['s60'] == 0].head(1).index
+    group.loc[index.values[0], 's60'] = 1
+    group['x'] = group['t'] * group['rate'] * group['s60']
+    group['28'] = group['x'] * rate
+
+    print(group)
+    return group[['27', '28', '29']]
+
+
+def reset_revenus_prevente(group, d):
+    print(0)
 
 def calcul_detail_financier(cost_table, financials_param, secteur, batiment, my_book, timeline) -> pd.DataFrame:
 
@@ -114,13 +230,71 @@ def calcul_detail_financier(cost_table, financials_param, secteur, batiment, my_
 
     # Ventes (Ecoulement et revenus bruts)
 
-    financials_result[['ecoulement']].groupby(financials_result['batiment']).apply(calcul_ecoulement_et_vente,
-                                                                                   cost_table[(cost_table['value'] == 'ntu') |
+    result = financials_result[['ecoulement']].groupby(financials_result['batiment']).apply(calcul_ecoulement_et_vente,
+                                                                                            cost_table[(cost_table['value'] == 'ntu') |
                                                                                    (cost_table['value'] == 'price')])
 
+    result = result.reset_index(drop=True)
+    financials_result = pd.concat([financials_result, result], axis=1)
 
+    # 50% des unites construites
+    d_ = dict()
+    pos = [16, 2]
+    for _ in range(len(__BATIMENT__)):
+        d_[__BATIMENT__[_]] = fsh.cell(pos[0], pos[1] + _).value
 
+    c = cost_table[(cost_table['value'] == 'ntu') & (cost_table['category'] == 'ALL')]
+    financials_result[['4', '6']] = financials_result[['46']].groupby(financials_result['batiment']).apply(
+        mid_prcent_unite_vendu, d_, c)
 
+    # livraison de l'immeuble
+    d_ = dict()
+    pos = [24, 2]
+    for _ in range(len(__BATIMENT__)):
+        d_[__BATIMENT__[_]] = fsh.cell(pos[0], pos[1] + _).value
+
+    financials_result['5'] = financials_result[['4']].groupby(financials_result['batiment']).apply(liv_immeuble, d_)
+
+    # ------> ENTREES DE FOND
+
+    # depot de prevente pour calcul
+    d_ = dict()
+    pos = [7, 2]
+    for _ in range(len(__BATIMENT__)):
+        d_[__BATIMENT__[_]] = fsh.cell(pos[0], pos[1] + _).value
+
+    # Depot de prevente total - pour calcul
+    financials_result = financials_result[financials_result['batiment'] == 'B8']
+    tab = financials_result[['4', '5', '54']].groupby(financials_result['batiment'])
+    financials_result[['7', '8', '11', '12', '13']] = tab.apply(depot_prevente, d_)
+
+    # --------- SORTIE DE FONDS
+    d_ = dict()
+    pos = [6, 2]
+    for _ in range(len(__BATIMENT__)):
+        d_[__BATIMENT__[_]] = fsh.cell(pos[0], pos[1] + _).value
+
+    cost = cost_table[cost_table['category'] == 'partial']
+    tab = financials_result[['1', '4', '5']].groupby(financials_result['batiment'])
+    financials_result[['15', '16', '17', '18', '19', '20', '21', '26', '60', '61']] = tab.apply(sortie_de_fond, cost,
+                                                                                                d_)
+
+    # ------------ FINANCEMENT
+
+    # Financement terrain
+    d_ = dict()
+    pos = [13, 2]
+    for _ in range(len(__BATIMENT__)):
+        d_[__BATIMENT__[_]] = fsh.cell(pos[0], pos[1] + _).value
+
+    tab = financials_result[['26', '60']].groupby(financials_result['batiment'])
+    financials_result[['27', '28', '29']] = tab.apply(financement_terrain, d_)
+    print(financials_result[['1', '4', '21', '5', '27', '28', '29']].head(50))
+    return
+
+    return
+
+    financials_result.to_csv('t.txt')
     return
     print(fonction_ecoulement[batiment].groupby(fonction_ecoulement['sector']).apply(ventes_ecoulement))
     print(financials_result.head(20))
@@ -261,11 +435,14 @@ if __name__ == '__main__':
     intrant_param = get_cb1_characteristics(myBook)
     cost_param = get_building_cost_parameter(myBook)
 
-    intrant_param = intrant_param[['sector', 'category', 'value', 'B1', 'B3', 'B8']]
-    intrant_param = intrant_param[(intrant_param['sector'] == 'Secteur 7') & (intrant_param['value'] != 'pptu')]
-    cost_param = cost_param[['sector', 'category', 'value', 'B1', 'B3', 'B8']]
+    intrant_param = get_cb4_characteristics(intrant_param, "Secteur 7", 5389.0, None, None, None, None)
+
+    intrant_param = intrant_param[['sector', 'category', 'value', 'B8']]
+    intrant_param = intrant_param[(intrant_param['sector'] == 'Secteur 7')]
+
+    cost_param = cost_param[['sector', 'category', 'value', 'B8']]
     cost_param = cost_param[cost_param['sector'] == 'Secteur 7']
-    cost_table = calcul_cout_batiment(intrant_param, cost_param, 'Secteur 7', ['B1', 'B3', 'B8'], myBook)
+    cost_table = calcul_cout_batiment(intrant_param, cost_param, 'Secteur 7', ['B8'], myBook)
 
     myBook = xlrd.open_workbook(__FINANCE_FILES_NAME__)
-    calcul_detail_financier(cost_table, None, 'Secteur 7', ['B1', 'B3', 'B8'], myBook, 120)
+    calcul_detail_financier(cost_table, None, 'Secteur 7', ['B8'], myBook, 120)
