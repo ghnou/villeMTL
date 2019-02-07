@@ -167,12 +167,86 @@ def financement_terrain(group, d):
     group['x'] = group['t'] * group['rate'] * group['s60']
     group['28'] = group['x'] * rate
 
-    print(group)
-    return group[['27', '28', '29']]
+    group['s61'] = group['61'].cumsum()
+    group['s61'] = group[['s61']].where(group['s61'] == 1, 0)
+
+    group['22'] = group['s61'] * group['27']
+
+    group['30'] = group['s61'] * (group['27'] - (group['18'].sum() - group['18'].cumsum() + group['18']))
+
+    return group[['22', '27', '28', '29', '30']]
 
 
-def reset_revenus_prevente(group, d):
-    print(0)
+def other(group, data):
+    group['s4'] = group['4'].cumsum()
+    group['s4'] = group[['s4']].where(group['s4'] == 1, 0)
+    group['s7'] = group['7'].cumsum()
+    group['y'] = data[data['value'] == 'max_equite'][group.name].values[0]
+    group['x'] = group['s4'] * group['s7']
+    group['z'] = group['s4'] * group['y']
+    group['9'] = group[['x', 'y']].min(axis=1)
+    group['10'] = group['8'] - group['9']
+    group['14'] = group['10'] + group['12'] + group['13']
+    return group[['9', '10', '14']]
+
+
+def projet_interest(group, d):
+    r = [[0, 0, 0, 0, 0]]
+    timeline = group['61'].cumsum().values
+    p = group['14'].values
+    af = group['30'].values
+    rate = (1 + d[group.name] / 2) ** (1 / 6) - 1
+    index = group.index
+    for time in range(1, len(timeline)):
+
+        if timeline[time] == 0:
+            v31 = 0
+            v23 = 0
+        elif timeline[time] == 1:
+            v31 = af[time] - sum(p[:time + 1])
+            v23 = -1 * sum(p[:time + 1])
+        else:
+            v31 = r[time - 1][0] + r[time - 1][2] - p[time]
+
+            if v31 > 0:
+                v23 = -1 * p[time]
+            else:
+                v23 = 0
+        v24 = 0
+        if r[time - 1][0] > 0 and v31 < 0:
+            v24 = -1 * r[time - 1]
+
+        v32 = 0 if v31 < 0 else v31
+        v33 = v32 * rate
+        r.append([v31, v32, v33, v23, v24])
+    v34 = []
+
+    for v in range(1, len(timeline)):
+        if r[v][2] == 0:
+            v34.append(0)
+        else:
+            v34.append(r[v - 1][2])
+    v34.append(0)
+    value = pd.DataFrame(r, columns=['31', '32', '33', '23', '24'])
+    value['34'] = v34
+    value.set_index(index)
+    group = pd.concat([group, value], axis=1)
+    group['65'] = group['5'] + group['6']
+    group['65'] = group['65'].where(group['65'] == 2, 0)
+    group['65'] = group['65'].where(group['65'] == 0, 1)
+
+    group['35'] = group['32'].where(group['32'] > 0, 0)
+    group['35'] = group['35'] * group['65'] * -1
+    group['25'] = group['24']
+    group.loc[group['24'] == 0, '25'] = group['23']
+
+    return group[['23', '24', '25', '31', '32', '33', '34', '35']]
+
+
+def cashflow(group):
+    group['36'] = group.sum(axis=1)
+    return group[['36']]
+
 
 def calcul_detail_financier(cost_table, financials_param, secteur, batiment, my_book, timeline) -> pd.DataFrame:
 
@@ -191,6 +265,14 @@ def calcul_detail_financier(cost_table, financials_param, secteur, batiment, my_
     financials_result (pd.Dataframe)
 
     """""
+    summary = pd.DataFrame(None, columns=cost_table.columns)
+    ntu = cost_table[(cost_table['value'] == 'ntu')]
+    cost = cost_table[(cost_table['category'] == 'partial')]
+    cost_total = cost_table[(cost_table['category'] == 'total')]
+    summary = pd.concat([summary, ntu, cost, cost_total])
+
+    c = cost_table[(cost_table['value'] == 'ntu') & (cost_table['category'] == 'ALL')]
+
     fsh = my_book.sheet_by_name(__FINANCE_PARAM_SHEET__)
     financials_result = []
     for bat in batiment:
@@ -264,7 +346,6 @@ def calcul_detail_financier(cost_table, financials_param, secteur, batiment, my_
         d_[__BATIMENT__[_]] = fsh.cell(pos[0], pos[1] + _).value
 
     # Depot de prevente total - pour calcul
-    financials_result = financials_result[financials_result['batiment'] == 'B8']
     tab = financials_result[['4', '5', '54']].groupby(financials_result['batiment'])
     financials_result[['7', '8', '11', '12', '13']] = tab.apply(depot_prevente, d_)
 
@@ -287,19 +368,78 @@ def calcul_detail_financier(cost_table, financials_param, secteur, batiment, my_
     for _ in range(len(__BATIMENT__)):
         d_[__BATIMENT__[_]] = fsh.cell(pos[0], pos[1] + _).value
 
-    tab = financials_result[['26', '60']].groupby(financials_result['batiment'])
-    financials_result[['27', '28', '29']] = tab.apply(financement_terrain, d_)
-    print(financials_result[['1', '4', '21', '5', '27', '28', '29']].head(50))
+    tab = financials_result[['18', '26', '60', '61']].groupby(financials_result['batiment'])
+    financials_result[['22', '27', '28', '29', '30']] = tab.apply(financement_terrain, d_)
+
+    fin_proj = financials_result[['28']].groupby(financials_result['batiment']).sum().reset_index()
+    fin_proj = fin_proj.set_index('batiment').transpose()
+    c = summary[summary['category'] == 'partial'][batiment].sum()
+    fin_proj = fin_proj.reset_index(drop=True) + c.values
+
+    d_ = dict()
+    pos = [5, 2]
+    for _ in range(len(__BATIMENT__)):
+        d_[__BATIMENT__[_]] = fsh.cell(pos[0], pos[1] + _).value
+
+    _ = []
+    for b in batiment:
+        _.append(d_[b])
+    max_equite = fin_proj * _
+
+    max_equite['sector'] = secteur
+    max_equite['category'] = 'total'
+    max_equite['value'] = 'max_equite'
+    max_equite = max_equite[cost_table.columns]
+
+    fin_proj['sector'] = secteur
+    fin_proj['category'] = 'total'
+    fin_proj['value'] = 'financement projet (ne compte pas interet projet'
+    fin_proj = fin_proj[cost_table.columns]
+    summary = pd.concat([summary, fin_proj, max_equite], ignore_index=True)
+
+    tab = financials_result[['4', '7', '8', '12', '13']].groupby(financials_result['batiment'])
+    financials_result[['9', '10', '14']] = tab.apply(other, summary)
+
+    d_ = dict()
+    pos = [14, 2]
+    for _ in range(len(__BATIMENT__)):
+        d_[__BATIMENT__[_]] = fsh.cell(pos[0], pos[1] + _).value
+
+    tab = financials_result[['5', '6', '14', '30', '61']].groupby(financials_result['batiment'])
+    financials_result[['23', '24', '25', '31', '32', '33', '34', '35']] = tab.apply(projet_interest, d_)
+
+    tab = financials_result[['9', '14', '15', '16', '17', '22', '25', '26', '30', '35']].groupby(
+        financials_result['batiment'])
+    financials_result['36'] = tab.apply(cashflow)
+
+    # KEY STATISTICS ------------------------------------------------------------------------->
+
+    print(summary)
+    inter_terr = financials_result[['29']].groupby(financials_result['batiment']).sum().reset_index()
+    inter_terr = inter_terr.set_index('batiment').transpose()
+    inter_terr['category'] = 'total'
+    inter_terr['value'] = 'total interet terrrain'
+    inter_terr['sector'] = secteur
+    inter_terr = inter_terr[cost_table.columns]
+
+    inter_proj = financials_result[['34']].groupby(financials_result['batiment']).sum().reset_index()
+    inter_proj = inter_proj.set_index('batiment').transpose()
+    inter_proj['category'] = 'total'
+    inter_proj['value'] = 'total interet projet'
+    inter_proj['sector'] = secteur
+    inter_proj = inter_proj[cost_table.columns]
+
+    x = financials_result[['33']].groupby(financials_result['batiment']).sum().reset_index()
+    y = financials_result[['30']].groupby(financials_result['batiment']).sum().reset_index()
+
+    print("Internal rate of return {0:.2f}%".format(100 * np.irr(financials_result['36'])))
+
+    summary = pd.concat([summary, inter_terr, inter_proj], ignore_index=True)
+    # print(cost_param)
+
+    # print(financials_result[['1', '4', '21', '5', '27', '28', '30']].head(50))
     return
 
-    return
-
-    financials_result.to_csv('t.txt')
-    return
-    print(fonction_ecoulement[batiment].groupby(fonction_ecoulement['sector']).apply(ventes_ecoulement))
-    print(financials_result.head(20))
-    print(cost_table[cost_table['value'] == 'ntu'].groupby('sector').apply(ventes_ecoulement, fonction_ecoulement))
-    # print(financials_result)
 
 
 
