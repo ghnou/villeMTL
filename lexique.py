@@ -1,10 +1,12 @@
 __COUTS_FILES_NAME__ = 'outils cout.xlsx'
 __FINANCE_FILES_NAME__ = 'finance.xlsx'
 
-__INTRANT_SHEET__ = 'Intrants'
+__FILES_NAME__ = 'templates.xlsx'
+
+__SCENARIO_SHEET__ = 'scenarios'
+__INTRANT_SHEET__ = 'intrants'
+__PRICE_SHEET__ = 'prix'
 __COUT_SHEET__ = 'PCOUTS'
-__PRICE_SHEET__ = 'PRIX'
-__SCENARIO_SHEET__ = 'Scénarios'
 
 __FINANCE_PARAM_SHEET__ = 'Param'
 __ECOULEMENT_SHEET__ = 'Ecoulement'
