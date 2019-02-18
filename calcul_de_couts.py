@@ -51,7 +51,7 @@ def apply_mutation_function(x) -> float:
         return x * 0.005
 
 
-def calcul_cout_batiment(table_of_intrant, cost_param, secteur, batiment, myBook) ->pd.DataFrame:
+def calcul_cout_batiment(table_of_intrant, cost_param, secteur, batiment, myBook) -> pd.DataFrame:
 
     """""
     This function is used to compute the cost of a builiding given a specific sector.
@@ -501,25 +501,21 @@ def calcul_cout_batiment(table_of_intrant, cost_param, secteur, batiment, myBook
     # Sous Total Terrain
     su = cout_result[(cout_result['value'].isin(['caq_ter', 'cont_soc', 'frais_parc', 'decont']))
                      & (cout_result['category'] == 'unique')][['sector'] + batiment].reset_index(drop=True)
-
     su = su.groupby('sector').sum().reset_index(drop=True)
     su['category'] = 'partial'
     su['sector'] = secteur
     su['value'] = 'financement terrain'
     su = su[cost_param.columns]
-    cout_result = pd.concat([cout_result, su],
-                            ignore_index=True)
+    cout_result = pd.concat([cout_result, su], ignore_index=True)
 
     # Cout total du projet
-
     tot = cout_result[cout_result['category'] == 'partial'][['sector'] + batiment].reset_index(drop=True)
     tot = tot.groupby('sector').sum().reset_index(drop=True)
     tot['category'] = 'total'
     tot['sector'] = secteur
     tot['value'] = 'cout total du projet'
     tot = tot[cost_param.columns]
-    cout_result = pd.concat([cout_result, tot],
-                            ignore_index=True)
+    cout_result = pd.concat([cout_result, tot], ignore_index=True)
 
     # Other Params
     cout_result[cout_result['category'] == 'partial'].to_csv('t.txt')
