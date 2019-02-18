@@ -530,7 +530,7 @@ if __name__ == '__main__':
     intrant_param = get_cb1_characteristics(myBook)
     cost_param = get_building_cost_parameter(myBook)
 
-    intrant_param = get_cb4_characteristics(intrant_param, "Secteur 7", 5389.0, None, None, None, None)
+    intrant_param = get_cb4_characteristics(intrant_param, "Secteur 7", 5389.0, None, 2, None, None)
 
     intrant_param = intrant_param[['sector', 'category', 'value', 'B1', 'B3', 'B8']]
     intrant_param = intrant_param[(intrant_param['sector'] == 'Secteur 7')]
@@ -539,4 +539,4 @@ if __name__ == '__main__':
     cost_param = cost_param[cost_param['sector'] == 'Secteur 7']
 
     print(calcul_cout_batiment(intrant_param, cost_param, 'Secteur 7', ['B1', 'B3', 'B8'], myBook)[
-              ['category', 'value', 'B1', 'B3', 'B8']])
+              ['category', 'value', 'B8']])
