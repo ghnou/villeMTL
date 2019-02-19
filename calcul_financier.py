@@ -3,9 +3,7 @@ import pandas as pd
 import xlrd
 
 from calcul_de_couts import calculate_cost
-from import_parameter import get_building_cost_parameter
-from lexique import __FILES_NAME__, __BATIMENT__, __SECTEUR__, __UNITE_TYPE__, __COUTS_FILES_NAME__, \
-    __FINANCE_PARAM_SHEET__, __ECOULEMENT_SHEET__
+from lexique import __FILES_NAME__, __BATIMENT__, __SECTEUR__, __UNITE_TYPE__
 from obtention_intrant import get_all_informations
 
 __author__ = 'pougomg'
@@ -166,6 +164,16 @@ def liv_immeuble(data, d):
 
     return group
 
+
+def get_25(data, d):
+    batim = data.name
+    group = data.copy()
+    value = d[batim].values[0]
+    group['x'] = -1 * group.sum(axis=1)
+    group['7'] = 0
+    group.loc[group['x'].cumsum() > 0.25 * value, '7'] = 1
+
+    return group[['7']]
 
 def depot_prevente(data, d):
 
@@ -458,7 +466,19 @@ def calcul_detail_financier(cost_table, secteur, batiment, my_book, timeline) ->
     tab = financials_result[['5', '8', '51', '52']].groupby(financials_result['batiment'])
     financials_result[['21', '22', '23', '24', '25', '26']] = tab.apply(depot_prevente, data).reset_index(level=0, drop=True)
 
-    financials_result.to_excel('x.xlsx')
+    ###################################################################################################################
+    #
+    # 25% equite atteinte.
+    #
+    ###################################################################################################################
+
+    data = cost_table[cost_table['value'] == 'cout total du projet']
+    print(data)
+    tab = financials_result[['10', '11', '12', '14', '27']].groupby(financials_result['batiment'])
+    financials_result[['6']] = tab.apply(get_25, data).reset_index(level=0, drop=True)
+    # financials_result.to_excel('x.xlsx')
+
+
     return
     #
     # Financement.
