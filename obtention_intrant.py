@@ -3,7 +3,8 @@ import pandas as pd
 import xlrd
 
 from lexique import __INTRANT_SHEET__, __PRICE_SHEET__, \
-    __BATIMENT__, __SECTEUR__, __UNITE_TYPE__, __SCENARIO_SHEET__, __FILES_NAME__
+    __BATIMENT__, __SECTEUR__, __UNITE_TYPE__, __SCENARIO_SHEET__, __FILES_NAME__, __COUT_SHEET__, __QUALITE_BATIMENT__, \
+    __ECOULEMENT_SHEET__, __FINANCE_PARAM_SHEET__
 
 
 def ajouter_caraterisque_par_secteur(sh, tab, name, pos, category, unique):
@@ -123,7 +124,7 @@ def get_all_informations(workbook) -> pd.DataFrame:
                           [[98, 3], 'pisc', 'ns'], [[99, 3], 'sup_pisc', 'ns'], [[101, 3], 'pp_sup_escom', 'ns'],
                           [[102, 3], 'pp_et_escom', 'ns'], [[103, 3], 'ss_sup_CES', 'ns'],
                           [[104, 3], 'ss_sup_ter', 'ns'],
-                          [[105, 3], 'nba', 'ns'], [[106, 3], 'min_max_asc', 'ns'], [[107, 3], 'tap', 'ns'], ]
+                          [[105, 3], 'nba', 'ns'], [[106, 3], 'min_max_asc', 'ns'], [[107, 3], 'tap', 'ns'],]
 
     # Get intrant parameters
     for value in tab_of_intrant_pos:
@@ -179,7 +180,7 @@ def get_all_informations(workbook) -> pd.DataFrame:
 
     ####################################################################################################################
     #
-    # Open Intrants sheet and take all the important parameters
+    # Open Scenarios sheet and take all the important parameters
     #
     ###################################################################################################################
 
@@ -235,6 +236,13 @@ def get_all_informations(workbook) -> pd.DataFrame:
     result['type'] = 'scenarios'
     result.replace({1: fp_exig}, inplace=True)
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
+
+    tab_of_intrant_pos = [[[77, 2], 'qum'], [[86, 3], 'quf']]
+    t = []
+    for value in tab_of_intrant_pos:
+        t = ajouter_caraterisque_par_secteur(sh, t, value[1], value[0], 'ALL', False)
+    qum = pd.DataFrame(t, columns=entete)
+
     ###################################################################################################################
     #
     # Open price sheet and take all the important parameters
@@ -253,6 +261,83 @@ def get_all_informations(workbook) -> pd.DataFrame:
     t = pd.DataFrame(t, columns=entete)
     t['type'] = 'price'
     table_of_intrant = pd.concat([table_of_intrant, t])
+
+    tab_of_intrant_pos = [[[68, 2], 'stat']]
+    t = []
+    for value in tab_of_intrant_pos:
+        t = ajouter_caraterisque_par_secteur(sh, t, value[1], value[0], 'ALL', False)
+    t = pd.DataFrame(t, columns=entete)
+    t['type'] = 'financial'
+    table_of_intrant = pd.concat([table_of_intrant, t])
+
+    ###################################################################################################################
+    #
+    # Open costs sheet and take all the important parameters
+    #
+    ###################################################################################################################
+
+    sh = workbook.sheet_by_name(__COUT_SHEET__)
+
+    tab_cost = []
+
+    tab_params = [
+        #Construction
+        [[6, 4], 'tcq'], [[7, 4], 'tss'], [[8, 4], 'tfu'], [[9, 4], 'all_cuis'], [[10, 4], 'all_sdb'],
+        [[11, 4], 'tvfac'], [[12, 4], 'asc'], [[13, 4], 'c_ad_pisc'], [[14, 4], 'c_ad_cu'], [[15, 4], 'c_ad_com'],
+        [[16, 4], 'it']
+        #Soft cost
+        , [[19, 4], 'apt_geo'], [[20, 4], 'prof'], [[21, 4], 'eval'], [[22, 4], 'legal_fee'], [[23, 4], 'prof_fee_div'],
+        [[24, 4], 'pub'], [[25, 4], 'construction_permit'], [[26, 4], 'com'], [[27, 4], 'hon_prom']]
+
+
+    for value in tab_params:
+        tab_cost = ajouter_caraterisque_par_secteur(sh, tab_cost, value[1], value[0], 'ALL', True)
+
+    entete = ['sector', 'category', 'value'] + __BATIMENT__
+    t = pd.DataFrame(tab_cost, columns=entete)
+    t['type'] = 'pcost'
+    table_of_intrant = pd.concat([table_of_intrant, t])
+
+    d_ = dict()
+    for line in range(len(__QUALITE_BATIMENT__)):
+        d_[__QUALITE_BATIMENT__[line]] = sh.cell(35 + line, 4).value
+    qum.replace(d_, inplace=True)
+
+    qum['type'] = 'pcost'
+    table_of_intrant = pd.concat([table_of_intrant, qum])
+
+    ###################################################################################################################
+    #
+    # Open price sheet and take all the important parameters
+    #
+    ###################################################################################################################
+
+    sh = workbook.sheet_by_name(__ECOULEMENT_SHEET__)
+    tab_of_intrant_pos = [[[4, 2], 'ecob3mo'], [[15, 2], 'ecoa3mo']]
+    t = []
+    for value in tab_of_intrant_pos:
+        t = ajouter_caraterisque_par_secteur(sh, t, value[1], value[0], 'ALL', False)
+    t = pd.DataFrame(t, columns=entete)
+    t['type'] = 'financial'
+    table_of_intrant = pd.concat([table_of_intrant, t])
+
+
+    sh = workbook.sheet_by_name(__FINANCE_PARAM_SHEET__)
+
+    tab_of_fin_pos = [[[21, 2], 'dm_ach_prev'], [[16, 2], 'nv_min_prev_av_deb'], [[24, 2], 'dur_moy_const'],
+                      [[6, 2], 'eq_terr'], [[7, 2], 'pp_prev'],]
+
+    t = []
+    # Get intrant parameters
+    for value in tab_of_fin_pos:
+        t = ajouter_caraterisque_par_secteur(sh, t, value[1], value[0], 'ALL', True)
+
+
+    entete = ['sector', 'category', 'value'] + __BATIMENT__
+    t = pd.DataFrame(t, columns=entete)
+    t['type'] = 'financial'
+    table_of_intrant = pd.concat([table_of_intrant, t])
+
 
     return table_of_intrant.reset_index(drop=True)
 
@@ -380,21 +465,6 @@ def get_cb1_characteristic(secteur, batiment, table_of_intrant):
     result = sup_tot_hs[entete]
     table_of_intrant = pd.concat([table_of_intrant, result])
 
-    # # Proportion in term of total surface
-    # suptu = table_of_intrant[(table_of_intrant['value'] == 'suptu') & (table_of_intrant['category'] != 'ALL')]
-    # result = suptu[batiment].astype(float).groupby(suptu['category']).mean()
-    # suptu = table_of_intrant[(table_of_intrant['value'] == 'suptu') & (table_of_intrant['category'] == 'ALL')]
-    # suptu = suptu[batiment].mean().tolist()
-    # result = result.div(suptu, axis='columns')
-    # result['value'] = 'ppts'
-    # result['type'] = 'intrants'
-    # result.reset_index(inplace=True)
-    #
-    # for sect in secteur:
-    #     result['sector'] = sect
-    #     result = result[entete]
-    #     table_of_intrant = pd.concat([table_of_intrant, result])
-
     # Land surface
     sup_ter = sup_tot_hs[batiment] / denm_p[batiment].reset_index()
     sup_ter['category'] = 'ALL'
@@ -436,7 +506,6 @@ def get_cb1_characteristic(secteur, batiment, table_of_intrant):
     v.where(ntu > 2, 0, inplace=True)
     v.where(ntu == 0, 1, inplace=True)
     result = sup * (1 + cir[batiment].reset_index(drop=True)) * v
-
     result['category'] = 'ALL'
     result['value'] = 'sup_parc'
     result['sector'] = secteur
@@ -454,7 +523,7 @@ def get_ca_characteristic(secteur, batiment, table_of_intrant):
     #
     ###################################################################################################################
 
-    entete = ['type', 'sector', 'category', 'value'] + batiment
+    entete = ['sector', 'category', 'value'] + batiment + ['type']
 
     input_variable = ['ntu', 'nmu_et', 'sup_ter', 'tum', 'vat', 'denm_p', 'ces', 'pptu', 'mp', 'min_nu', 'max_nu',
                       'min_ne', 'max_ne',
@@ -506,7 +575,6 @@ def get_ca_characteristic(secteur, batiment, table_of_intrant):
     result = x.groupby(['category', 'sector']).apply(calculate_total_surface, batiment).reset_index(drop=True)
 
     table_of_intrant = pd.concat([table_of_intrant, result[entete]])
-
     x = result.groupby('sector')[batiment].sum()
     x['type'] = 'intrants'
     x['category'] = 'ALL'
@@ -606,8 +674,8 @@ def get_ca_characteristic(secteur, batiment, table_of_intrant):
     sup = sup[batiment].groupby(sup['sector']).sum().reset_index(drop=True)
     v = table_of_intrant[(table_of_intrant['value'] == 'ntu') & (table_of_intrant['category'] == 'ALL')][
         batiment].reset_index(drop=True)
-    v.where(ntu > 2, 0, inplace=True)
-    v.where(ntu == 0, 1, inplace=True)
+    v = v.where(ntu > 2, 0)
+    v = v.where(v == 0, 1)
     result = sup * (1 + cir[batiment].reset_index(drop=True)) * v
 
     result['category'] = 'ALL'
@@ -630,13 +698,13 @@ def get_ca_characteristic(secteur, batiment, table_of_intrant):
 
     # densi
     dens = sup_tot_hs[batiment].reset_index(drop=True) / sup_ter[batiment].reset_index(drop=True)
-    print(sup_tot_hs)
     dens['category'] = 'ALL'
     dens['value'] = 'dens'
     dens['sector'] = secteur
     dens['type'] = 'intrants'
     result = dens[entete]
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
+
     return table_of_intrant
 
 
@@ -661,12 +729,11 @@ def get_cb3_characteristic(secteur, batiment, table_of_intrant, *args):
     # Take input parameter for the computations.
     #
     ###################################################################################################################
-    print(args)
+
     intrant_value = args[0]
 
     for value in intrant_value:
         t = np.ones((len(secteur), len(batiment)))
-        print(value)
         v = np.array(intrant_value[value])
         input = np.multiply(t, v)
         table_of_intrant.loc[table_of_intrant['value'] == value, batiment] = input
@@ -1899,24 +1966,34 @@ def get_cb3_characteristics(table_of_intrant, *args) -> pd.DataFrame:
 
 
 def get_summary_characteristics(type, secteur, batiment, table_of_intrant, *args):
+
+    entete = ['type', 'sector', 'category', 'value'] + batiment
+
+    other_intrant = table_of_intrant[table_of_intrant['type'].isin(['pcost', 'financial'])]
+    other_intrant = other_intrant[other_intrant['sector'].isin(secteur)][entete]
+
     cb1 = get_cb1_characteristic(__SECTEUR__, __BATIMENT__, table_of_intrant)
 
     if type == 'CB1':
-        return cb1
+        value =  cb1[cb1['sector'].isin(secteur)][entete]
     elif type == 'CA1':
-        return get_ca_characteristic(__SECTEUR__, __BATIMENT__, cb1)
+        value = get_ca_characteristic(__SECTEUR__, __BATIMENT__, cb1)
     elif type == 'CB3':
-        return get_cb3_characteristic(secteur, batiment, cb1, *args)
+        value =  get_cb3_characteristic(secteur, batiment, cb1, *args)
     elif type == 'CB4':
-        return get_cb4_characteristic(secteur, batiment, cb1, *args)
+        value =  get_cb4_characteristic(secteur, batiment, cb1, *args)
     elif type == 'CA3':
         cb3 = get_cb3_characteristic(secteur, batiment, cb1, *args)
-        return get_ca_characteristic(secteur, batiment, cb3)
+        value = get_ca_characteristic(secteur, batiment, cb3)
     elif type == 'CA4':
         cb4 = get_cb4_characteristic(secteur, batiment, cb1, *args)
-        return get_ca_characteristic(secteur, batiment, cb4)
+        value = get_ca_characteristic(secteur, batiment, cb4)
     else:
         raise ('The input value must be: CB1, CB3, CB4, CA1, CA3 or CA4')
+
+    return pd.concat([value[entete], other_intrant], ignore_index=True)
+
+
 
 
 if __name__ == '__main__':
@@ -1925,18 +2002,18 @@ if __name__ == '__main__':
     args = dict()
     supter = [50000]
     densite = [10]
-
-    for ter in supter:
-        for dens in densite:
-            args = dict()
-            v = np.ones((len(__SECTEUR__), 1))
-            args['sup_ter'] = ter * v
-            args['denm_p'] = dens * v
-            result = get_summary_characteristics('CA3', __SECTEUR__, __BATIMENT__, x, args)
-            result = result[
-                (result['value'].isin(['sup_ter', 'ntu', 'dens', 'nbr_etage_hs'])) & (result['category'] == 'ALL')]
-    print(result)
-    result.to_csv('x.txt')
+    get_summary_characteristics('CB1', __SECTEUR__[0:4], __BATIMENT__[4:], x, args)
+    # for ter in supter:
+    #     for dens in densite:
+    #         args = dict()
+    #         v = np.ones((len(__SECTEUR__), 1))
+    #         args['sup_ter'] = ter * v
+    #         args['denm_p'] = dens * v
+    #         result = get_summary_characteristics('CA3', __SECTEUR__, __BATIMENT__, x, args)
+    #         result = result[
+    #             (result['value'].isin(['sup_ter', 'ntu', 'dens', 'nbr_etage_hs'])) & (result['category'] == 'ALL')]
+    # print(result)
+    # result.to_csv('x.txt')
     # x = get_summary_characteristics('CA3', __SECTEUR__, __BATIMENT__, x, args)
     # x.to_excel('out.xlsx')
 
