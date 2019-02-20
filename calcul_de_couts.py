@@ -514,7 +514,7 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
     su = su.groupby('sector').sum().reset_index(drop=True)
     su['category'] = 'partial'
     su['sector'] = secteur
-    su['value'] = 'financement terrain'
+    su['value'] = 'acq terrain'
     su['type'] = 'cost'
     result = su[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result],ignore_index=True)
@@ -535,7 +535,7 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
     su = su.groupby('sector').sum().reset_index(drop=True)
     su['category'] = 'partial'
     su['sector'] = secteur
-    su['value'] = 'acquisition terrain'
+    su['value'] = 'financement terrain'
     su['type'] = 'cost'
     result = su[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result],ignore_index=True)

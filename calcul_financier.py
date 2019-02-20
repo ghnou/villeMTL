@@ -175,6 +175,80 @@ def get_25(data, d):
 
     return group[['7']]
 
+
+def financement_commencer(data):
+
+    group = data.copy()
+    group['7'] = group.sum(axis=1)
+    group.loc[group['7'] < 2, '7'] = 0
+    group.loc[group['7'] == 2, '7'] = 1
+
+    return group[['7']]
+
+
+def sold_fin_terr(data, d):
+
+    name = data.name
+    group = data.copy()
+    x = group['27'].head(1).values[0]
+    group['x'] = x
+    rate = (1 + d[name].values[0] / 2) ** (1 / 6) - 1
+    rate_tab = [(1 + rate) ** (i) for i in range(group.shape[0])]
+    group['rate'] = rate_tab
+    group['28'] = group['x'] * group['rate']
+    group['29'] = group['28'] * rate
+    group['29'] = group['29'].shift(1).fillna(0)
+
+    group.loc[ group['7'] == 1, '28'] = 0
+    group.loc[ group['7'] == 1, '29'] = 0
+
+    return group[['28', '29']]
+
+def pret_projet(data, d):
+
+    name = data.name
+    group = data.copy()
+    rate = (1 + d[name].values[0] / 2) ** (1 / 6) - 1
+
+    group['rate'] = 0
+    group.loc[group['7'].cumsum()>0, 'rate'] = rate
+
+    # group['rate'] = (1 + group['rate']).cumprod()
+    # group.loc[group['7'].cumsum() == 0, 'rate'] = 0
+
+    group['x'] = group[['11', '12', '15', '14', '22']].sum(axis=1)
+    group['x'] = group['7'] * group['x']
+    group['y'] = (group[['24', '25', '26']].sum(axis=1)) * group['7']
+
+    value = group[['x', 'y', 'rate']].values
+    # print(group[['x', 'y', 'rate']].head(50))
+
+    tab = [[0, 0, 0]]
+
+    for line in range(1, value.shape[0]):
+
+        interet = (value[line -1][2]) * tab[line -1][1]
+
+        pret = value[line][0] - interet
+
+        if value[line][0] >= 0:
+            pret = 0
+        else:
+            pret = - pret
+
+        cum = tab[line -1][1] + pret - value[line][1]
+
+        cum = 0 if cum < 0 else cum
+        interet = 0 if cum == 0 else interet
+
+        tab.append([pret, cum, interet])
+    x = pd.DataFrame(tab, columns=['30', '31', '32'])
+    x.index = group.index
+
+    return x[['30', '31', '32']]
+
+    # print(group[['x', 'rate']].head(50))
+
 def depot_prevente(data, d):
 
     group = data.copy()
@@ -347,6 +421,34 @@ def projet_interest(data, d):
 
     return group[['23', '24', '25', '31', '32', '33', '34', '35']]
 
+def remb_terr(data):
+
+    group = data.copy()
+    name = data.name
+
+    group['28'] = group['28'].shift(1).fillna(0)
+    group['15'] = 0
+    group.loc[group['7'].cumsum() == 1, '15'] = -1 * group['28']
+
+    return group[['15']]
+
+def remb_proj(data):
+
+    group = data.copy()
+    group['x'] = group['31'].shift(1).fillna(0)
+    group.loc[:, 'x'] = group['31'] - group['x']
+    group['y'] = group['x'] - group['30']
+    group['16'] = 0
+
+    group.loc[group[(group['31'] > 0) & (group['x'] < 0)].index, '16'] =group['y']
+    group['17'] = 0
+
+    group['x'] = group['31'].shift(1).fillna(0)
+    group.loc[group[(group['31'] ==0) & (group['x'] >0)].index, '17'] = -group['x']
+
+    return group[['16', '17']]
+
+
 
 def cashflow(group):
 
@@ -473,68 +575,40 @@ def calcul_detail_financier(cost_table, secteur, batiment, my_book, timeline) ->
     ###################################################################################################################
 
     data = cost_table[cost_table['value'] == 'cout total du projet']
-    print(data)
+
     tab = financials_result[['10', '11', '12', '14', '27']].groupby(financials_result['batiment'])
     financials_result[['6']] = tab.apply(get_25, data).reset_index(level=0, drop=True)
-    # financials_result.to_excel('x.xlsx')
 
+    tab = financials_result[['5', '6']].groupby(financials_result['batiment'])
+    financials_result[['7']] = tab.apply(financement_commencer).reset_index(level=0, drop=True)
 
-    return
+    data = cost_table[cost_table['value'] == 'interet_terrain']
+    tab = financials_result[['27', '7']].groupby(financials_result['batiment'])
+    financials_result[['28', '29']] = tab.apply(sold_fin_terr, data).reset_index(level=0, drop=True)
+
+    tab = financials_result[['7', '28']].groupby(financials_result['batiment'])
+    financials_result[['15']] = tab.apply(remb_terr).reset_index(level=0, drop=True)
+    financials_result.to_excel('x.xlsx')
+
+    tab = financials_result[['7', '11', '12', '14', '15', '22', '24', '25', '26']].groupby(financials_result['batiment'])
+    financials_result[['30', '31', '32']] = tab.apply(pret_projet, data).reset_index(level=0, drop=True)
+    financials_result.loc[:, '13'] = -1*financials_result.loc[:, '32']
+    financials_result.loc[:, '20'] = financials_result.loc[:, '30']
+
+    tab = financials_result[['30', '31']].groupby(financials_result['batiment'])
+    financials_result[['16', '17']] = tab.apply(remb_proj).reset_index(level=0, drop=True)
+
+    ###################################################################################################################
     #
-    # Financement.
+    # CashFlow
     #
     ###################################################################################################################
 
-    # Financement terrain
-    d_ = dict()
-    pos = [13, 2]
-    for _ in range(len(__BATIMENT__)):
-        d_[__BATIMENT__[_]] = fsh.cell(pos[0], pos[1] + _).value
+    entete_for_cashflow = ['10', '11', '12', '13', '14', '15', '16', '17', '19', '20', '22', '24', '25', '26']
 
-    tab = financials_result[['18', '26', '60', '61']].groupby(financials_result['batiment'])
-    financials_result[['22', '27', '28', '29', '30']] = tab.apply(financement_terrain, d_).reset_index(level=0, drop=True)
-
-    fin_proj = financials_result[['28']].groupby(financials_result['batiment']).sum().reset_index()
-    fin_proj = fin_proj.set_index('batiment').transpose()
-    c = summary[summary['category'] == 'partial'][batiment].sum()
-
-    fin_proj = fin_proj.reset_index(drop=True) + c.values
-
-    d_ = dict()
-    pos = [5, 2]
-    for _ in range(len(__BATIMENT__)):
-        d_[__BATIMENT__[_]] = fsh.cell(pos[0], pos[1] + _).value
-
-    _ = []
-    for b in batiment:
-        _.append(d_[b])
-    max_equite = fin_proj * _
-
-    max_equite['sector'] = secteur
-    max_equite['category'] = 'total'
-    max_equite['value'] = 'Maximum equite fin - preventes'
-    max_equite = max_equite[cost_table.columns]
-
-    fin_proj['sector'] = secteur
-    fin_proj['category'] = 'total'
-    fin_proj['value'] = 'financement projet (ne compte pas interet du financement projet)'
-    fin_proj = fin_proj[cost_table.columns]
-    summary = pd.concat([summary, fin_proj, max_equite], ignore_index=True)
-
-    tab = financials_result[['4', '7', '8', '12', '13']].groupby(financials_result['batiment'])
-    financials_result[['9', '10', '14']] = tab.apply(other, summary).reset_index(level=0, drop=True)
-
-
-    d_ = dict()
-    pos = [14, 2]
-    for _ in range(len(__BATIMENT__)):
-        d_[__BATIMENT__[_]] = fsh.cell(pos[0], pos[1] + _).value
-
-    tab = financials_result[['5', '6', '14', '30', '61']].groupby(financials_result['batiment']).apply(projet_interest,
-                                                                                                       d_)
-    financials_result[['23', '24', '25', '31', '32', '33', '34', '35']] = tab.reset_index(level=0, drop=True)
-
-    financials_result['36'] = financials_result[['9', '14', '15', '16', '17', '22', '25', '26', '30', '35']].sum(axis=1)
+    financials_result['33'] = financials_result[entete_for_cashflow].sum(axis=1)
+    financials_result[entete_for_cashflow].to_excel('xx.xlsx')
+    financials_result.to_excel('x.xlsx')
 
 
     ###################################################################################################################
@@ -549,14 +623,16 @@ def calcul_detail_financier(cost_table, secteur, batiment, my_book, timeline) ->
     inter_terr['category'] = 'total'
     inter_terr['value'] = 'total interet terrain'
     inter_terr['sector'] = secteur
+    inter_terr['type'] = 'result'
     inter_terr = inter_terr[cost_table.columns]
 
     # total interet projet
-    inter_proj = financials_result[['34']].groupby(financials_result['batiment']).sum().reset_index()
+    inter_proj = financials_result[['32']].groupby(financials_result['batiment']).sum().reset_index()
     inter_proj = inter_proj.set_index('batiment').transpose()
     inter_proj['category'] = 'total'
     inter_proj['value'] = 'total interet projet'
     inter_proj['sector'] = secteur
+    inter_proj['type'] = 'result'
     inter_proj = inter_proj[cost_table.columns]
 
     # total cout avec interet
@@ -565,30 +641,33 @@ def calcul_detail_financier(cost_table, secteur, batiment, my_book, timeline) ->
     total_cout_interet['category'] = 'total'
     total_cout_interet['value'] = 'total cout avec interet'
     total_cout_interet['sector'] = secteur
+    total_cout_interet['type'] = 'result'
     total_cout_interet = total_cout_interet[cost_table.columns]
-
-    # Financement projet (avec interets)
-    fin_proj_av_i = financials_result[['30', '33']].sum(axis=1).groupby(financials_result['batiment']).sum().reset_index()
-    fin_proj_av_i = fin_proj_av_i.set_index('batiment').transpose()
-    fin_proj_av_i['sector'] = secteur
-    fin_proj_av_i['category'] = 'total'
-    fin_proj_av_i['value'] = 'Financement projet (avec interets)'
-    fin_proj_av_i = fin_proj_av_i[cost_table.columns]
-
-    # Equite dans le projet
-    eq_dans_proj = financials_result[['19']].groupby(financials_result['batiment']).sum().reset_index()
-    eq_dans_proj =-1 * eq_dans_proj.set_index('batiment').transpose()
-    eq_dans_proj['sector'] = secteur
-    eq_dans_proj['category'] = 'total'
-    eq_dans_proj['value'] = 'Equite dans le projet'
-    eq_dans_proj = eq_dans_proj[cost_table.columns]
-
+    #
+    # # Financement projet (avec interets)
+    # fin_proj_av_i = financials_result[['30', '33']].sum(axis=1).groupby(financials_result['batiment']).sum().reset_index()
+    # fin_proj_av_i = fin_proj_av_i.set_index('batiment').transpose()
+    # fin_proj_av_i['sector'] = secteur
+    # fin_proj_av_i['category'] = 'total'
+    # fin_proj_av_i['value'] = 'Financement projet (avec interets)'
+    # fin_proj_av_i = fin_proj_av_i[cost_table.columns]
+    #
+    # # Equite dans le projet
+    # eq_dans_proj = financials_result[['19']].groupby(financials_result['batiment']).sum().reset_index()
+    # eq_dans_proj =-1 * eq_dans_proj.set_index('batiment').transpose()
+    # eq_dans_proj['sector'] = secteur
+    # eq_dans_proj['category'] = 'total'
+    # eq_dans_proj['value'] = 'Equite dans le projet'
+    # eq_dans_proj = eq_dans_proj[cost_table.columns]
+    #
     # Revenus totaux
-    rev_totaux = financials_result[['54']].groupby(financials_result['batiment']).sum().reset_index()
-    rev_totaux = rev_totaux.set_index('batiment').transpose()
+    rev_totaux = financials_result[['51']].groupby(financials_result['batiment']).sum().reset_index()
+    x = financials_result[['52']].groupby(financials_result['batiment']).sum().reset_index()
+    rev_totaux = rev_totaux.set_index('batiment').transpose().reset_index(drop=True) + x.set_index('batiment').transpose().reset_index(drop=True)
     rev_totaux['sector'] = secteur
     rev_totaux['category'] = 'total'
     rev_totaux['value'] = 'revenus totaux'
+    rev_totaux['type'] = 'result'
     rev_totaux = rev_totaux[cost_table.columns]
 
     # Profit net
@@ -596,39 +675,28 @@ def calcul_detail_financier(cost_table, secteur, batiment, my_book, timeline) ->
     prof_net['sector'] = secteur
     prof_net['category'] = 'total'
     prof_net['value'] = 'profit net'
+    prof_net['type'] = 'result'
     prof_net = prof_net[cost_table.columns]
 
-
-
-    # Somme cash flow
-    csh_flow = financials_result[['36']].groupby(financials_result['batiment']).sum().reset_index()
-    csh_flow = csh_flow.set_index('batiment').transpose()
-    csh_flow['category'] = 'total'
-    csh_flow['value'] = 'somme cash flow'
-    csh_flow['sector'] = secteur
-    csh_flow = csh_flow[cost_table.columns]
-
     # TRI
-    tri = financials_result['36'].groupby(financials_result['batiment']).apply(calculate_irr)
+    tri = financials_result['33'].groupby(financials_result['batiment']).apply(calculate_irr)
     tri = tri.to_frame().transpose()
+    tri = (1 + tri/100)**12 - 1
     tri['category'] = 'total'
     tri['value'] = 'TRI'
     tri['sector'] = secteur
+    tri['type'] = 'result'
     tri = tri[cost_table.columns]
 
-    summary = pd.concat([summary, inter_terr, inter_proj, total_cout_interet, fin_proj_av_i, eq_dans_proj, rev_totaux,
-                         prof_net, csh_flow, tri],
+    summary = pd.concat([summary, inter_terr, inter_proj, total_cout_interet, rev_totaux,prof_net,  tri],
                         ignore_index=True)
 
-    financials_result.to_excel('out.xlsx')
-    print(summary[['category', 'value'] + batiment])
-    summary.to_excel('summary.xlsx')
-    return
+    return summary
 
 def calculate_financial(type, secteur, batiment, params, timeline=120, *args):
 
     cost_table = calculate_cost(type, secteur, batiment, params, *args)
-    calcul_detail_financier(cost_table, secteur, batiment, None, timeline)
+    return calcul_detail_financier(cost_table, secteur, batiment, None, timeline)
 
 
 if __name__ == '__main__':
@@ -638,4 +706,13 @@ if __name__ == '__main__':
     args = dict()
     supter = [50000]
     densite = [10]
-    calculate_financial('CA3', [__SECTEUR__[-1]], __BATIMENT__[-1: ], x, 120, args)
+
+    tab = []
+    calculate_financial('CA3', ['Secteur 2'], ['B2'], x, 120, args)
+    # for secteur in __SECTEUR__:
+    #     r = calculate_financial('CA3', [secteur], __BATIMENT__, x, 120, args)
+    #     tab.append(r)
+
+    # tab = pd.concat(tab, ignore_index=True)
+    # tab.to_excel('result.xlsx')
+

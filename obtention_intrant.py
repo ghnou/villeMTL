@@ -325,7 +325,7 @@ def get_all_informations(workbook) -> pd.DataFrame:
     sh = workbook.sheet_by_name(__FINANCE_PARAM_SHEET__)
 
     tab_of_fin_pos = [[[21, 2], 'dm_ach_prev'], [[16, 2], 'nv_min_prev_av_deb'], [[24, 2], 'dur_moy_const'],
-                      [[6, 2], 'eq_terr'], [[7, 2], 'pp_prev'],]
+                      [[6, 2], 'eq_terr'], [[7, 2], 'pp_prev'], [[13, 2], 'interet_terrain']]
 
     t = []
     # Get intrant parameters
