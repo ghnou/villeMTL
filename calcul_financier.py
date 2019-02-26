@@ -462,7 +462,7 @@ def calculate_irr(group):
     return  100 * np.irr(group.fillna(0).values)
 
 
-def calcul_detail_financier(cost_table, secteur, batiment, my_book, timeline) -> pd.DataFrame:
+def calcul_detail_financier(cost_table, secteur, batiment,  timeline) -> pd.DataFrame:
 
     """""
     This function is used to compute the cost of a builiding given a specific sector.
@@ -696,7 +696,7 @@ def calcul_detail_financier(cost_table, secteur, batiment, my_book, timeline) ->
 def calculate_financial(type, secteur, batiment, params, timeline=120, *args):
 
     cost_table = calculate_cost(type, secteur, batiment, params, *args)
-    return calcul_detail_financier(cost_table, secteur, batiment, None, timeline)
+    return calcul_detail_financier(cost_table, secteur, batiment, timeline)
 
 
 if __name__ == '__main__':
