@@ -12,23 +12,43 @@ def get_financials_results(z, *params):
     vat = z
     table_intrant, secteur, batiment, to_optimize, value = params
 
-    entete = ['type', 'sector', 'category', 'value'] + [batiment]
-    table_intrant = table_intrant[entete]
-    table_intrant.loc[table_intrant['value'] == 'vat', [batiment]] = vat
+    print(batiment)
+    print(vat)
 
-    cost_table = calcul_cout_batiment(table_intrant,  secteur, [batiment])
-    fin_table = calcul_detail_financier(cost_table, secteur, [batiment],  120)
+    entete = ['type', 'sector', 'category', 'value'] + batiment
+    table_intrant = table_intrant[entete]
+    table_intrant.loc[table_intrant['value'] == 'vat', batiment] = vat
+
+    cost_table = calcul_cout_batiment(table_intrant,  secteur, batiment)
+    fin_table = calcul_detail_financier(cost_table, secteur, batiment,  120)
 
     r = fin_table.loc[fin_table[fin_table['value'] == to_optimize].index[0], batiment]
-    r = 1000 if np.isnan(r) else r
 
-    return (r, value)
+    return r
 
 
 def function_to_optimize(z, *params):
 
-    r, value = get_financials_results(z, *params)
+
+    value = params[4]
+
+    r = get_financials_results(z, *params)
+    r = r[r.astype(float).idxmax(skipna=True)]
+    r = 1000 if np.isnan(r) else r
+    print(r)
+    print('')
     return np.abs(value-r)
+
+def n(params):
+
+    x, y, z, k = params
+    if x*y*z*k == 200:
+
+        value =  x + y + z + k
+    else:
+        value =  1000
+
+    return value
 
 
 
@@ -40,18 +60,37 @@ if __name__ == '__main__':
 
     args['sup_ter'] = [[15000]]
     args['denm_p'] = [[3]]
-    args['vat'] = [[100]]
+    args['vat'] = [[85]]
+
+    objectif = 0.15
+    to_optimize = 'TRI'
 
     table_intrant = get_summary_characteristics('CA3', __SECTEUR__[6:], __BATIMENT__, x, args)
+    # params = (table_intrant, __SECTEUR__[6:], __BATIMENT__, to_optimize, objectif)
+    # base_value = get_financials_results(args['vat'][0][0], *params)
+    #
+    # batiment = base_value.astype(float).idxmax(skipna=True)
+    # base_value = base_value[batiment]
+    #
+    # if base_value > objectif:
+    #     rranges = (slice(args['vat'][0][0], 1000, 200),)
+    #     params = (table_intrant, __SECTEUR__[6:], [batiment], to_optimize, objectif)
+    #     resbrute = optimize.brute(function_to_optimize, ranges=rranges,args=params, full_output=True, finish=None)
+    #
+    #     rranges = (slice(resbrute[0]-200, resbrute[0] + 200, 50),)
+    #     resbrute = optimize.brute(function_to_optimize, ranges=rranges,args=params, full_output=True, finish=None)
+    #
+    #     rranges = (slice(resbrute[0]-50, resbrute[0] + 50, 10),)
+    #     resbrute = optimize.brute(function_to_optimize, ranges=rranges,args=params, full_output=True, finish=None)
+    #
+    # else:
+    #     rranges = (slice(0, args['vat'][0][0], 200),)
+    #     params = (table_intrant, __SECTEUR__[6:], [batiment], to_optimize, objectif)
+    #     resbrute = optimize.brute(function_to_optimize, ranges=rranges,args=params, full_output=True, finish=None)
 
-    base_value = get_financials_results(args['vat'][0][0], *params)
 
 
-    rranges = (slice(0, 1000, 50),)
-
-    params = (table_intrant, __SECTEUR__[6:], 'B8', 'TRI', 0.3)
-    print(function_to_optimize(400, *params))
-
-    resbrute = optimize.brute(function_to_optimize, ranges=rranges,args=params, full_output=True, finish=None)
+    rranges = (slice(0, 50, 1), slice(0, 50, 1), slice(0, 50, 1), slice(0, 50, 1))
+    resbrute = optimize.brute(n, ranges=rranges, finish=None)
     print(resbrute[0])
     print(resbrute[1])
