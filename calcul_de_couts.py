@@ -548,8 +548,8 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
     result.loc[:,'category'] = 'ALL'
     result.loc[:,'sector'] = secteur
     result.loc[:,'value'] = 'go_no_go'
-    result.loc[:, batiment[4:]] = 1
-    result.loc[:, batiment[0:4]] = 0
+    result.loc[:, batiment] = 1
+    # result.loc[:, batiment[0:4]] = 0
     table_of_intrant = pd.concat([table_of_intrant, result],ignore_index=True)
 
     return table_of_intrant

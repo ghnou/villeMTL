@@ -28,12 +28,12 @@ def debut_des_ventes(data, dm_1, dm_prev, parc_fee):
     sector = data.name[0]
 
     value = dm_1[batiment].values[0]
-    group['3'] = group['1'].where(group['1'].astype(int) >= value, 0)
+    group['3'] = group['1'].where(group['1'].astype(int) > value, 0)
     group['3'] = group['3'].where(group['3'] == 0, 1)
     group['4'] = group['3']
 
     value = dm_prev[batiment].values[0]
-    group['5'] = group['1'].where(group['1'].astype(int) >= value, 0)
+    group['5'] = group['1'].where(group['1'].astype(int) > value, 0)
     group['5'] = group['5'].where(group['5'] == 0, 1)
 
     parc = parc_fee[(parc_fee['value'] == 'frais_parc') &
@@ -136,14 +136,13 @@ def calcul_ecoulement_et_vente(data, nombre_total_unite):
     group = group.assign(**di)
     group.loc[:, __UNITE_TYPE__] = group[__UNITE_TYPE__].where(group['3'] != 0, 0)
 
-    result = group[__UNITE_TYPE__].where(group[__UNITE_TYPE__].cumsum() <= ntu.values, 0)
+    result = group[__UNITE_TYPE__].where(group[__UNITE_TYPE__].cumsum() <= ntu[__UNITE_TYPE__].values, 0)
 
     price = nombre_total_unite[(nombre_total_unite['category'].isin(__UNITE_TYPE__)) &
                              (nombre_total_unite['value'] == 'price') &
                              (nombre_total_unite['sector'] == sector)][[batiment, 'category']].set_index('category').transpose()
     price = price[__UNITE_TYPE__]
-    mul = group[__UNITE_TYPE__].mul(price.values[0], axis=1)
-
+    mul = result[__UNITE_TYPE__].mul(price.values[0], axis=1)
 
     result['48'] = result.sum(axis=1)
     result['49'] = result['48'].cumsum()
@@ -201,14 +200,18 @@ def mid_prcent_unite_vendu(data, d, ntu):
 def liv_immeuble(data, d):
 
     batim = data.name[1]
-    group = data[['8']].copy()
+    group = data.copy()
 
     value = d[batim].values[0]
-    group = group.cumsum()
-    group.where(group >= value, 0, inplace=True)
-    group.where(group == 0, 1, inplace=True)
+    group.loc[:, '8'] = group['8'].cumsum()
+    group.loc[:, '10'] = group['8'].where(group['8'] > value, 0)
+    group.loc[:, '10'] = group['10'].where(group['10'] == 0, 1)
+    group['10'] = group['10'].where(group['10'] == 0, 1)
+    group['60'] = 0
+    group.loc[group['10'].cumsum() == 1, '60'] = group['1']
+    group['61'] = group['60']
 
-    return group
+    return group[['10', '60', '61']]
 
 
 def get_25(data, d):
@@ -234,21 +237,31 @@ def financement_commencer(data):
 
 def sold_fin_terr(data, d):
 
-    name = data.name
+    batiment = data.name[1]
     group = data.copy()
-    x = group['27'].head(1).values[0]
-    group['x'] = x
-    rate = (1 + d[name].values[0] / 2) ** (1 / 6) - 1
-    rate_tab = [(1 + rate) ** (i) for i in range(group.shape[0])]
-    group['rate'] = rate_tab
-    group['28'] = group['x'] * group['rate']
-    group['29'] = group['28'] * rate
-    group['29'] = group['29'].shift(1).fillna(0)
+    rate = d[batiment].values[0] / 12
+    global cum, interet
 
-    group.loc[ group['7'] == 1, '28'] = 0
-    group.loc[ group['7'] == 1, '29'] = 0
+    def calculate(time_line, sorties, entree):
+        global interet, cum
+        cum = (sorties - entree + cum + interet) * (1 - time_line)
+        interet = rate * cum
 
-    return group[['28', '29']]
+        return cum
+
+    group['70'] = group['68'] - group['69']
+    cum = group['70'].head(1).values[0]
+    interet = cum * rate
+    group.loc[group.index[1]:, '70'] = group.loc[group.index[1]:].apply(lambda row: calculate(*row[['10', '68', '69']]),
+                                                                        axis=1)
+    group['71'] = group['70'] * rate
+
+    nb_month = group['60'].loc[group['60'].idxmax()]
+
+    group['15'] = -1 * (1 - group['10']) * (group['71'].sum()/(nb_month - 1))
+
+    return group[['15', '70', '71']]
+
 
 def pret_projet(data, d):
 
@@ -298,68 +311,115 @@ def pret_projet(data, d):
 def depot_prevente(data, d):
 
     group = data.copy()
-    name = data.name
-    value = d[name].values[0]
+    batiment = data.name[1]
+    value = d[batiment].values[0]
 
-    group['21'] = ((1 - group['8']) * group['51']).mul(value)
-    group['23'] = ((1 - group['8']) * group['51']).mul(1 - value)
-
-    group['x'] = 1
-    group.loc[group['5'].cumsum() != 1, 'x'] = 0
-    group['22'] = (group['x'].shift(-1) * group['21'].cumsum()).shift(1) + group['21'] * group['5']
+    group['26'] = ((1 - group['10']) * group['58']).mul(value)
+    group['28'] = ((1 - group['10']) * group['58']).mul(1 - value)
 
     group['x'] = 1
-    group.loc[group['8'].cumsum() != 1, 'x'] = 0
-    group['24'] = group['x'] * group['23'].cumsum()
-    group['25'] = group['8'] * group['51']
-    group['26'] = group['x'] * group['52'].cumsum()
+    group['27'] = group['6'] * (group['6'].where(group['6'].cumsum() == 1, 0) * group['26'].cumsum() +
+                                group['6'].where(group['6'].cumsum() > 1, 0) * group['26'])
+    group['29'] = 0
+    group.loc[group['10'].cumsum() == 1, '29'] = group['28'].cumsum()
 
+    group['30'] = 0
+    group.loc[group['10'] == 1, '30'] = group['58']
+    group['31'] = group['10'] * (group['10'].where(group['10'].cumsum() == 1, 0) * group['59'].cumsum() +
+                                 group['10'].where(group['10'].cumsum() > 1,  0) * group['59'])
+    group['32'] = group[['27', '29', '30', '31']].sum(axis=1)
 
-    return group[['21', '22', '23', '24', '25', '26']]
+    group['67'] = 0
+    group.loc[group['6'].cumsum() > 1, '67'] = group['26']
+
+    group['68'] = -1 * (1 - group['10']) * ((1 - group['7']) * group['12'] + group['7'] * group[['12', '13', '14']].sum(axis=1))
+    group['69'] = group[['67', '24']].sum(axis=1)
+
+    return group[['26', '27', '28', '29', '30', '31', '32', '67', '68', '69']]
 
 
 def sortie_de_fond(data, cost, d):
-    "5 = 8, 4 = 5"
+
     group = data.copy()
-    name = data.name
-    value = d[name].values[0]
+    batiment = data.name[1]
+    sector = data.name[0]
+    cost = cost[cost['sector'] == sector]
+    terrain = cost.loc[cost['value'] == 'financement terrain',
+                       batiment].values[0]
+    soft_cost = cost.loc[cost['value'] == 'soft cost',
+                         batiment].values[0]
+    hard_cost = cost.loc[cost['value'] == 'hard cost',
+                         batiment].values[0]
+    nb_month = group['60'].loc[group['60'].idxmax()]
+    nb_month_hard = d.loc[d['value'] == 'dur_moy_const', batiment].values[0]
 
-    terrain = cost.loc[cost['value'] == 'financement terrain', name].values[0]
-    soft_cost = cost.loc[cost['value'] == 'soft cost', name].values[0]
-    hard_cost = cost.loc[cost['value'] == 'hard cost', name].values[0]
+    group['12'] = 0
+    group.loc[group.head(1).index, '12'] = -1 * terrain
 
-    group['10'] = 0
-    group['27'] = 0
-    group.loc[group.head(1).index, '10'] = -1 * terrain
-    group.loc[group.head(1).index, '27'] = value * terrain
-    group.loc[:, '19'] = group['27']
+    eq_ter = d.loc[d['value'] == 'eq_terr', batiment].values[0]
+    group.loc[:, '24'] = -1 * group['12'] * eq_ter
+    group.loc[:, '33'] = group['24']
 
-    group['s8'] = 1 + group['8'].cumsum()
-    group['s8'] = group[['s8']].where(group['s8'] == 1, 0)
-    group['soft_per'] = group['s8'] * group['1']
-    n_soft = group['soft_per'].max()
+    group['13'] = -1 * (1 - group['10']) * soft_cost/(nb_month - 1)
+    group['14'] = -1 * group['8'] * (1 - group['10']) * hard_cost/nb_month_hard
+    # TODO: group['16]
+    group['16'] = 0
+    group['23'] = -1 * group[['12', '13', '14', '16', '17', '18', '24']].sum(axis=1)
 
-    group['11'] = -(1 - group['8']) * (soft_cost / n_soft)
+    cout_projet_est = terrain + soft_cost + hard_cost
+    group.loc[:, '7'] = 0
+    group.loc[group['23'].cumsum() >= 0.25 * cout_projet_est, '7'] = 1
 
-    group['12'] = -(group['5'] - group['8']) * (hard_cost / (group['5'].sum() - group['8'].sum()))
+    group.loc[:, '9'] = group['5'] * group['6'] * group['7']
+    group['34'] = 0
+    group.loc[group['9'] == 0, '34'] = group['33'].cumsum()
 
-    # group['18'] = group['15'] + group['16'] + group['17'] + group['26']
-    #
-    # group['s18'] = group['18'].cumsum()
-    # group['21'] = -1 * group['s18'] - 0.25 * (terrain + soft_cost + hard_cost)
-    # group['21'] = group[['21']].where(group['21'] > 0, 0)
-    # group['21'] = group[['21']].where(group['21'] == 0, 1)
-    #
-    # group['21s'] = group['21'].shift(1).fillna(0)
-    # group['19'] = (1 - group['21s']) * group['18']
-    # # group['20'] = (1 - group['19']) * group['18']
-    # group['20'] = group['18'].where(group['19'] != 0, group['18'])
-    # group['20'] = group['20'].where(group['19'] == 0, 0)
-    # group['60'] = group['4'] + group['21']
-    # group['61'] = group[['60']].where(group['60'] == 2, 0)
-    # group['61'] = group[['61']].where(group['61'] == 0, 1)
+    group['19'] = 0
+    group.loc[group['9'].cumsum() == 1, '19'] = - terrain * eq_ter
 
-    return group[['10', '11', '12', '19', '27']]
+    return group[['7', '9', '12', '13', '14', '16', '19', '23', '24', '33', '34']]
+
+
+def financement_projet(data, d):
+
+    group = data.copy()
+    batiment = data.name[1]
+    sector = data.name[0]
+    global cum
+
+    def calculate(remb, prev, liv, stat, pret):
+        global cum
+        cum = 0 if (remb < 0) or cum + pret - prev - liv - stat < 0 else cum + pret - prev - liv - stat
+        return cum
+
+    rate = (1 + d[batiment].values[0]/ 2) ** (1 / 6) - 1
+
+    group['36'] = -1 * group['9'] * group[['13', '14', '15', '16', '17', '19', '27']].sum(axis=1)
+    group.loc[group['36'] <= 0, '36'] = 0
+    # group.loc[group['36'] > 0, '36'] = - group['36']
+    group['x'] = group['36'].shift(1).fillna(0)
+    group['x'] = group['x'].where(group['x'] > 0, 0)
+    group['x'] = group['x'].where(group['x'] != 0, 1)
+
+    group['22'] = -1 * (1 - group['10']) * (group['11'].where(group['11'].cumsum() == 1, 0)) * group['x'] * group['36'] * rate
+
+    group['37'] = group['36'] - group[['29', '30', '31']].sum(axis=1)
+    cum = group['37'].head(1).values[0]
+
+    group.loc[group.index[1]:, '37'] = group.loc[group.index[1]:].apply(
+        lambda row: calculate(*row[['22', '29', '30', '31', '36']]), axis=1)
+
+    group.loc[:, 'x'] = group['37'].shift(1).fillna(0)
+    group.loc[:, 'x'] = group['37'] - group['x']
+    group['20'] = 0
+    group.loc[group['37'] > 0, '20'] = group['x'].where(group['x'] < 0, 0) - group['36'].where(group['x'] < 0, 0)
+
+    group['21'] = - group['37'].shift(1).fillna(0)
+    group.loc[group['37'] != 0, '21'] = 0
+    group.loc[group['21'] > 0, '21'] = 0
+    group['25'] = group['36']
+
+    return group[['20', '21', '22', '25', '36', '37']]
 
 
 def financement_terrain(data, d):
@@ -504,7 +564,7 @@ def cashflow(group):
 
 def calculate_irr(group):
 
-    return  100 * np.irr(group.fillna(0).values)
+    return 100 * np.irr(group['39'].fillna(0).values)
 
 
 def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_params) -> pd.DataFrame:
@@ -576,16 +636,11 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
     t = financials_result[['sector', 'batiment', '5', '49']].groupby(['sector', 'batiment'])
     financials_result[['6', '8', '11']] = t.apply(mid_prcent_unite_vendu, data, c).reset_index(drop=True)
 
-
-
-
     # livraison de l'immeuble
     data = finance_params[finance_params['value'] == 'dur_moy_const']
 
-    t = financials_result[['sector', 'batiment', '8']].groupby(['sector', 'batiment'])
-    financials_result['10'] = t.apply(liv_immeuble, data).reset_index(drop=True)
-
-
+    t = financials_result[['sector', 'batiment', '1', '8']].groupby(['sector', 'batiment'])
+    financials_result[['10', '60', '61']] = t.apply(liv_immeuble, data).reset_index(drop=True)
 
      ###################################################################################################################
     #
@@ -593,17 +648,11 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
     #
     ###################################################################################################################
 
-    data = finance_params[finance_params['value'] == 'eq_terr']
-
-
+    data = finance_params[finance_params['value'].isin(['eq_terr', 'dur_moy_const'])]
     cost = cost_table[cost_table['category'] == 'partial']
-    tab = financials_result[['1', '5', '8']].groupby(financials_result['batiment']).apply(sortie_de_fond, cost, data)
-    financials_result[['10', '11', '12', '19', '27']] = tab.reset_index(level=0, drop=True)
 
-    financials_result.to_excel('test.xlsx')
-    return
-
-    ###################################################################################################################
+    tab = financials_result[['sector', 'batiment', '5', '6', '8', '10', '17', '18', '60']].groupby(['sector', 'batiment'])
+    financials_result[['7', '9', '12', '13', '14', '16', '19', '23', '24', '33', '34']] = tab.apply(sortie_de_fond, cost, data).reset_index(drop=True)
 
 
     ###################################################################################################################
@@ -613,41 +662,37 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
     ###################################################################################################################
 
     # depot de prevente pour calcul
-    data = cost_table[cost_table['value'] == 'pp_prev']
+    data = finance_params[finance_params['value'] == 'pp_prev']
 
     # Depot de prevente total - pour calcul
-    tab = financials_result[['5', '8', '51', '52']].groupby(financials_result['batiment'])
-    financials_result[['21', '22', '23', '24', '25', '26']] = tab.apply(depot_prevente, data).reset_index(level=0, drop=True)
+    tab = financials_result[['sector', 'batiment', '6', '7', '10', '12', '13', '14', '24', '58', '59']].groupby(
+        ['sector', 'batiment'])
+    x = ['26', '27', '28', '29', '30', '31', '32', '67', '68', '69']
+    financials_result[x] = tab.apply(depot_prevente, data).reset_index(drop=True)
 
     ###################################################################################################################
     #
-    # 25% equite atteinte.
+    # Interets.
     #
     ###################################################################################################################
 
-    data = cost_table[cost_table['value'] == 'cout total du projet']
+    # Calcul interet simplifié
+    data = finance_params[finance_params['value'] == 'interet_terrain']
 
-    tab = financials_result[['10', '11', '12', '14', '27']].groupby(financials_result['batiment'])
-    financials_result[['6']] = tab.apply(get_25, data).reset_index(level=0, drop=True)
+    tab = financials_result[['sector', 'batiment', '10', '60', '68', '69']].groupby(
+        ['sector', 'batiment'])
+    financials_result[['15', '70', '71']] = tab.apply(sold_fin_terr, data).reset_index(drop=True)
 
-    tab = financials_result[['5', '6']].groupby(financials_result['batiment'])
-    financials_result[['7']] = tab.apply(financement_commencer).reset_index(level=0, drop=True)
+    ###################################################################################################################
+    #
+    # Pret projet.
+    #
+    ###################################################################################################################
+    data = finance_params[finance_params['value'] == 'interet_projet']
 
-    data = cost_table[cost_table['value'] == 'interet_terrain']
-    tab = financials_result[['27', '7']].groupby(financials_result['batiment'])
-    financials_result[['28', '29']] = tab.apply(sold_fin_terr, data).reset_index(level=0, drop=True)
-
-    tab = financials_result[['7', '28']].groupby(financials_result['batiment'])
-    financials_result[['15']] = tab.apply(remb_terr).reset_index(level=0, drop=True)
-    financials_result.to_excel('x.xlsx')
-
-    tab = financials_result[['7', '11', '12', '14', '15', '22', '24', '25', '26']].groupby(financials_result['batiment'])
-    financials_result[['30', '31', '32']] = tab.apply(pret_projet, data).reset_index(level=0, drop=True)
-    financials_result.loc[:, '13'] = -1*financials_result.loc[:, '32']
-    financials_result.loc[:, '20'] = financials_result.loc[:, '30']
-
-    tab = financials_result[['30', '31']].groupby(financials_result['batiment'])
-    financials_result[['16', '17']] = tab.apply(remb_proj).reset_index(level=0, drop=True)
+    x = ['sector', 'batiment', '9', '10', '11', '13', '14', '15', '16', '17', '19', '27', '29', '30', '31']
+    tab = financials_result[x].groupby(['sector', 'batiment'])
+    financials_result[['20', '21', '22', '25', '36', '37']] = tab.apply(financement_projet, data).reset_index(drop=True)
 
     ###################################################################################################################
     #
@@ -655,12 +700,9 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
     #
     ###################################################################################################################
 
-    entete_for_cashflow = ['10', '11', '12', '13', '14', '15', '16', '17', '19', '20', '22', '24', '25', '26']
+    entete_for_cashflow = ['12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '24', '25', '27', '29', '30', '31']
 
-    financials_result['33'] = financials_result[entete_for_cashflow].sum(axis=1)
-    financials_result[entete_for_cashflow].to_excel('xx.xlsx')
-    financials_result.to_excel('x.xlsx')
-
+    financials_result['39'] = financials_result[entete_for_cashflow].sum(axis=1)
 
     ###################################################################################################################
     #
@@ -668,86 +710,89 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
     #
     ###################################################################################################################
 
-    # total interet terrain
-    inter_terr = financials_result[['29']].groupby(financials_result['batiment']).sum().reset_index()
-    inter_terr = inter_terr.set_index('batiment').transpose()
-    inter_terr['category'] = 'total'
-    inter_terr['value'] = 'total interet terrain'
-    inter_terr['sector'] = secteur
-    inter_terr['type'] = 'result'
-    inter_terr = inter_terr[cost_table.columns]
-
-    # total interet projet
-    inter_proj = financials_result[['32']].groupby(financials_result['batiment']).sum().reset_index()
-    inter_proj = inter_proj.set_index('batiment').transpose()
-    inter_proj['category'] = 'total'
-    inter_proj['value'] = 'total interet projet'
-    inter_proj['sector'] = secteur
-    inter_proj['type'] = 'result'
-    inter_proj = inter_proj[cost_table.columns]
-
-    # total cout avec interet
-    total_cout_interet = summary[summary['value'] == 'cout total du projet'][batiment].reset_index()
-    total_cout_interet = total_cout_interet + inter_terr[batiment].reset_index(drop=True) + inter_proj[batiment].reset_index(drop=True)
-    total_cout_interet['category'] = 'total'
-    total_cout_interet['value'] = 'total cout avec interet'
-    total_cout_interet['sector'] = secteur
-    total_cout_interet['type'] = 'result'
-    total_cout_interet = total_cout_interet[cost_table.columns]
+    # # total interet terrain
+    # inter_terr = financials_result[['29']].groupby(financials_result['batiment']).sum().reset_index()
+    # inter_terr = inter_terr.set_index('batiment').transpose()
+    # inter_terr['category'] = 'total'
+    # inter_terr['value'] = 'total interet terrain'
+    # inter_terr['sector'] = secteur
+    # inter_terr['type'] = 'result'
+    # inter_terr = inter_terr[cost_table.columns]
+    # # financials_result.to_excel('test.xlsx')
     #
-    # # Financement projet (avec interets)
-    # fin_proj_av_i = financials_result[['30', '33']].sum(axis=1).groupby(financials_result['batiment']).sum().reset_index()
-    # fin_proj_av_i = fin_proj_av_i.set_index('batiment').transpose()
-    # fin_proj_av_i['sector'] = secteur
-    # fin_proj_av_i['category'] = 'total'
-    # fin_proj_av_i['value'] = 'Financement projet (avec interets)'
-    # fin_proj_av_i = fin_proj_av_i[cost_table.columns]
+    # # total interet projet
+    # inter_proj = financials_result[['32']].groupby(financials_result['batiment']).sum().reset_index()
+    # inter_proj = inter_proj.set_index('batiment').transpose()
+    # inter_proj['category'] = 'total'
+    # inter_proj['value'] = 'total interet projet'
+    # inter_proj['sector'] = secteur
+    # inter_proj['type'] = 'result'
+    # inter_proj = inter_proj[cost_table.columns]
     #
-    # # Equite dans le projet
-    # eq_dans_proj = financials_result[['19']].groupby(financials_result['batiment']).sum().reset_index()
-    # eq_dans_proj =-1 * eq_dans_proj.set_index('batiment').transpose()
-    # eq_dans_proj['sector'] = secteur
-    # eq_dans_proj['category'] = 'total'
-    # eq_dans_proj['value'] = 'Equite dans le projet'
-    # eq_dans_proj = eq_dans_proj[cost_table.columns]
+    # # total cout avec interet
+    # total_cout_interet = summary[summary['value'] == 'cout total du projet'][batiment].reset_index()
+    # total_cout_interet = total_cout_interet + inter_terr[batiment].reset_index(drop=True) + inter_proj[batiment].reset_index(drop=True)
+    # total_cout_interet['category'] = 'total'
+    # total_cout_interet['value'] = 'total cout avec interet'
+    # total_cout_interet['sector'] = secteur
+    # total_cout_interet['type'] = 'result'
+    # total_cout_interet = total_cout_interet[cost_table.columns]
+    # #
+    # # # Financement projet (avec interets)
+    # # fin_proj_av_i = financials_result[['30', '33']].sum(axis=1).groupby(financials_result['batiment']).sum().reset_index()
+    # # fin_proj_av_i = fin_proj_av_i.set_index('batiment').transpose()
+    # # fin_proj_av_i['sector'] = secteur
+    # # fin_proj_av_i['category'] = 'total'
+    # # fin_proj_av_i['value'] = 'Financement projet (avec interets)'
+    # # fin_proj_av_i = fin_proj_av_i[cost_table.columns]
+    # #
+    # # # Equite dans le projet
+    # # eq_dans_proj = financials_result[['19']].groupby(financials_result['batiment']).sum().reset_index()
+    # # eq_dans_proj =-1 * eq_dans_proj.set_index('batiment').transpose()
+    # # eq_dans_proj['sector'] = secteur
+    # # eq_dans_proj['category'] = 'total'
+    # # eq_dans_proj['value'] = 'Equite dans le projet'
+    # # eq_dans_proj = eq_dans_proj[cost_table.columns]
+    # #
+    # # Revenus totaux
+    # rev_totaux = financials_result[['51']].groupby(financials_result['batiment']).sum().reset_index()
+    # x = financials_result[['52']].groupby(financials_result['batiment']).sum().reset_index()
+    # rev_totaux = rev_totaux.set_index('batiment').transpose().reset_index(drop=True) + x.set_index('batiment').transpose().reset_index(drop=True)
+    # rev_totaux['sector'] = secteur
+    # rev_totaux['category'] = 'total'
+    # rev_totaux['value'] = 'revenus totaux'
+    # rev_totaux['type'] = 'result'
+    # rev_totaux = rev_totaux[cost_table.columns]
     #
-    # Revenus totaux
-    rev_totaux = financials_result[['51']].groupby(financials_result['batiment']).sum().reset_index()
-    x = financials_result[['52']].groupby(financials_result['batiment']).sum().reset_index()
-    rev_totaux = rev_totaux.set_index('batiment').transpose().reset_index(drop=True) + x.set_index('batiment').transpose().reset_index(drop=True)
-    rev_totaux['sector'] = secteur
-    rev_totaux['category'] = 'total'
-    rev_totaux['value'] = 'revenus totaux'
-    rev_totaux['type'] = 'result'
-    rev_totaux = rev_totaux[cost_table.columns]
-
-    # Profit net
-    prof_net = rev_totaux[batiment].reset_index(drop=True) - total_cout_interet[batiment].reset_index(drop=True)
-    prof_net['sector'] = secteur
-    prof_net['category'] = 'total'
-    prof_net['value'] = 'profit net'
-    prof_net['type'] = 'result'
-    prof_net = prof_net[cost_table.columns]
+    # # Profit net
+    # prof_net = rev_totaux[batiment].reset_index(drop=True) - total_cout_interet[batiment].reset_index(drop=True)
+    # prof_net['sector'] = secteur
+    # prof_net['category'] = 'total'
+    # prof_net['value'] = 'profit net'
+    # prof_net['type'] = 'result'
+    # prof_net = prof_net[cost_table.columns]
 
     # TRI
-    tri = financials_result['33'].groupby(financials_result['batiment']).apply(calculate_irr)
-    tri = tri.to_frame().transpose()
+    tri = financials_result[['sector', 'batiment', '39']].groupby(['sector', 'batiment']).apply(calculate_irr)
     tri = (1 + tri/100)**12 - 1
+    print(tri)
+    return
+    tri = tri.to_frame().transpose()
     tri['category'] = 'total'
     tri['value'] = 'TRI'
     tri['sector'] = secteur
     tri['type'] = 'result'
     tri = tri[cost_table.columns]
 
-    # Marge Beneficiare
-    marge = prof_net[batiment].reset_index(drop=True)/total_cout_interet[batiment].reset_index(drop=True)
-    marge['sector'] = secteur
-    marge['category'] = 'total'
-    marge['value'] = 'marge beneficiaire'
-    marge['type'] = 'result'
-    marge = marge[cost_table.columns]
-    summary = pd.concat([summary, inter_terr, inter_proj, total_cout_interet, rev_totaux,prof_net,  tri, marge],
-                        ignore_index=True)
+    # # Marge Beneficiare
+    # marge = prof_net[batiment].reset_index(drop=True)/total_cout_interet[batiment].reset_index(drop=True)
+    # marge['sector'] = secteur
+    # marge['category'] = 'total'
+    # marge['value'] = 'marge beneficiaire'
+    # marge['type'] = 'result'
+    # marge = marge[cost_table.columns]
+    # summary = pd.concat([summary, inter_terr, inter_proj, total_cout_interet, rev_totaux,prof_net,  tri, marge],
+    #                     ignore_index=True)
 
     return summary
 
@@ -770,7 +815,8 @@ if __name__ == '__main__':
     finance_params = x[(x['type'].isin(['financial'])) & (x['sector'] == 'Secteur 1')]
 
     # tab = []
-    result = calculate_financial('CA3', ['Secteur 2', 'Secteur 3'], __BATIMENT__, x, 120, finance_params, args)
+    print(__BATIMENT__[5:6])
+    result = calculate_financial('CA3', __SECTEUR__, __BATIMENT__, x, 120, finance_params, args)
     # r = result.loc[result[result['value'] == 'marge beneficiaire'].index[0], __BATIMENT__]
     # best_batiment = r.astype(float).idxmax(skipna=True)
     # result = result[result['value'].isin(['ntu', 'TRI', 'marge beneficiaire'])]

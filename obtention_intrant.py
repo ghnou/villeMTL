@@ -282,7 +282,7 @@ def get_all_informations(workbook) -> pd.DataFrame:
     t = t[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, t])
 
-    tab_of_intrant_pos = [[[68, 2], 'stat']]
+    tab_of_intrant_pos = [[[67, 2], 'stat']]
     t = []
     for value in tab_of_intrant_pos:
         t = ajouter_caraterisque_par_secteur(sh, t, value[1], value[0], 'ALL', False)
@@ -353,7 +353,7 @@ def get_all_informations(workbook) -> pd.DataFrame:
     sh = workbook.sheet_by_name(__FINANCE_PARAM_SHEET__)
 
     tab_of_fin_pos = [[[21, 2], 'dm_1'], [[22, 2], 'dm_prev'], [[16, 2], 'nv_min_prev_av_deb'], [[24, 2], 'dur_moy_const'],
-                      [[6, 2], 'eq_terr'], [[7, 2], 'pp_prev'], [[13, 2], 'interet_terrain']]
+                      [[6, 2], 'eq_terr'], [[7, 2], 'pp_prev'], [[14, 2], 'interet_terrain'], [[13, 2], 'interet_projet']]
 
     t = []
     # Get intrant parameters
