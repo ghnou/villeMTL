@@ -720,6 +720,7 @@ def get_ca_characteristic(secteur, batiment, table_of_intrant):
     nbr_etage_hs = supbtu[batiment].reset_index(drop=True) / sup_ter[batiment].reset_index(drop=True)
     ces = table_of_intrant[table_of_intrant['value'] == 'ces']
     nbr_etage_hs = nbr_etage_hs / ces[batiment].reset_index(drop=True)
+
     nbr_etage_hs['category'] = 'ALL'
     nbr_etage_hs['value'] = 'nbr_etage_hs'
     nbr_etage_hs['sector'] = secteur

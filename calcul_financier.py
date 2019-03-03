@@ -11,6 +11,17 @@ from obtention_intrant import get_all_informations, get_intrants, get_cb3_charac
 
 __author__ = 'pougomg'
 
+def format_for_output(data):
+
+    sector = data.name
+    group = data.copy()
+    group.loc[group['value'] == 'ntu', 'value'] = group['category']
+    group.drop(['category', 'type', 'sector'], axis=1, inplace=True)
+    group = group.set_index('value').transpose().reset_index()
+    group.rename(columns={'index': 'batiment', 'ALL': 'Nombre unites'}, inplace=True)
+    group['sector'] = sector
+
+    return group
 
 def debut_des_ventes(data, dm_1, dm_prev, parc_fee):
 
@@ -126,17 +137,54 @@ def calcul_ecoulement_et_vente(data, nombre_total_unite):
 
     sector, batiment = data.name
     group = data.copy()
+    global start_pos, ecob3mo, ecoa3mo, residu
+
     ntu = nombre_total_unite[(nombre_total_unite['category'].isin(__UNITE_TYPE__)) &
                              (nombre_total_unite['value'] == 'ntu') &
                              (nombre_total_unite['sector'] == sector)][[batiment, 'category']].set_index('category').transpose()
 
+    ecob3mo = nombre_total_unite[(nombre_total_unite['category'].isin(__UNITE_TYPE__)) &
+                             (nombre_total_unite['value'] == 'ecob3mo') &
+                             (nombre_total_unite['sector'] == sector)][[batiment, 'category']].set_index('category').transpose()
+    ecoa3mo = nombre_total_unite[(nombre_total_unite['category'].isin(__UNITE_TYPE__)) &
+                             (nombre_total_unite['value'] == 'ecoa3mo') &
+                             (nombre_total_unite['sector'] == sector)][[batiment, 'category']].set_index('category').transpose()
+
+    residu = [[0, 0, 0, 0, 0, 0, 0]]
+    start_pos = 0
+
+    def fonction_ecoulement(timeline, studio, cc_1, cc_2, cc_3, penth, cc_2_fam, cc_3_fam):
+        global start_pos, ecob3mo, ecoa3mo, residu
+
+        if timeline == 1:
+            start_pos += 1
+            if start_pos < 4:
+                value = ecob3mo.values.astype(int)
+                residu = residu + ecob3mo.values - value
+                value = value + residu.astype(int)
+                residu = residu - residu.astype(int)
+                return pd.Series(value[0])
+            else:
+                value = ecoa3mo.values.astype(int)
+                residu = residu + ecoa3mo.values - value
+                value = value + residu.astype(int)
+                residu = residu - residu.astype(int)
+                return pd.Series(value[0])
+        else:
+            return pd.Series(np.array([0, 0, 0, 0, 0, 0, 0]))
+
     di = dict()
     for x in __UNITE_TYPE__:
-        di[x] = 1
+        di[x] = 0
     group = group.assign(**di)
-    group.loc[:, __UNITE_TYPE__] = group[__UNITE_TYPE__].where(group['3'] != 0, 0)
 
-    result = group[__UNITE_TYPE__].where(group[__UNITE_TYPE__].cumsum() <= ntu[__UNITE_TYPE__].values, 0)
+    group.loc[group.index[1]:, __UNITE_TYPE__] = group.loc[group.index[1]:, ['4'] + __UNITE_TYPE__].apply(
+        lambda row: fonction_ecoulement(*row[['4'] + __UNITE_TYPE__]),
+        axis=1).values
+
+    group = group[__UNITE_TYPE__].where(group[__UNITE_TYPE__].cumsum() <= ntu[__UNITE_TYPE__].values,
+                                        group[__UNITE_TYPE__] - group[__UNITE_TYPE__].cumsum() + ntu[__UNITE_TYPE__].values[0])
+    result = group[__UNITE_TYPE__].where(group[__UNITE_TYPE__] > 0, 0)
 
     price = nombre_total_unite[(nombre_total_unite['category'].isin(__UNITE_TYPE__)) &
                              (nombre_total_unite['value'] == 'price') &
@@ -165,7 +213,6 @@ def calcul_ecoulement_et_vente(data, nombre_total_unite):
 
     stat = nombre_total_unite[(nombre_total_unite['value'] == 'stat') &
                              (nombre_total_unite['sector'] == sector)][[batiment, 'category']].set_index('category').transpose()
-
 
     result = pd.concat([result, mul], axis=1)
     result['59'] = result['48'] * si.values[0] * stat.values[0]
@@ -589,7 +636,7 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
     cost = cost_table[(cost_table['category'] == 'partial')]
     cost_total = cost_table[(cost_table['category'] == 'total')]
     summary = pd.concat([summary, ntu, cost, cost_total])
-
+    summary = summary.groupby(['sector']).apply(format_for_output).reset_index(drop=True)
 
     c = cost_table[(cost_table['value'] == 'ntu') & (cost_table['category'] == 'ALL')]
     go = cost_table[(cost_table['value'] == 'go_no_go') & (cost_table['category'] == 'ALL')]
@@ -599,7 +646,6 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
 
         c = go[batiment].loc[go['sector'] == sector]
         c = c.iloc[:, c.gt(0).any().values]
-        t = []
 
         for bat in c.columns:
             x = pd.DataFrame([[sector, bat, i + 1, 1] for i in range(timeline)], columns=['sector', 'batiment', '1', '2'])
@@ -622,15 +668,14 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
 
     # Ventes (Ecoulement et revenus bruts)
     result = financials_result[['sector', 'batiment', '3', '4']].groupby(['sector', 'batiment'])
-    result = result.apply(calcul_ecoulement_et_vente, cost_table[cost_table['value'].isin(['ntu', 'price', 'si', 'stat'])])
+    params = cost_table[cost_table['value'].isin(['ntu', 'ecob3mo', 'ecoa3mo', 'price', 'si', 'stat'])]
+    result = result.apply(calcul_ecoulement_et_vente, params)
 
     result = result.reset_index(drop=True)
     financials_result = pd.concat([financials_result, result], axis=1)
+    financials_result.to_excel('test.xlsx')
 
-
-    # fonction_ecoulement = cost_table[cost_table['value'].isin(['ecob3mo', 'ecoa3mo'])]
     # 50% des unites construites
-
     data = finance_params[finance_params['value'] == 'nv_min_prev_av_deb']
     c = cost_table[(cost_table['value'] == 'ntu') & (cost_table['category'] == 'ALL')]
     t = financials_result[['sector', 'batiment', '5', '49']].groupby(['sector', 'batiment'])
@@ -774,8 +819,11 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
 
     # TRI
     tri = financials_result[['sector', 'batiment', '39']].groupby(['sector', 'batiment']).apply(calculate_irr)
-    tri = (1 + tri/100)**12 - 1
-    print(tri)
+    tri = np.round(100 * ((1 + tri/100)**12 - 1), 2)
+    tri = tri.reset_index().rename(columns={0: 'TRI'})
+    summary = pd.merge(summary, tri, on=['sector', 'batiment'])
+    # summary.to_excel('test.xlsx')
+    # print(summary)
     return
     tri = tri.to_frame().transpose()
     tri['category'] = 'total'
@@ -809,14 +857,14 @@ if __name__ == '__main__':
     myBook = xlrd.open_workbook(__FILES_NAME__)
     x = get_all_informations(myBook)
     cost = x[x['type'].isin(['pcost'])]
-    args = dict()
-    supter = [50000]
-    densite = [10]
-    finance_params = x[(x['type'].isin(['financial'])) & (x['sector'] == 'Secteur 1')]
-
-    # tab = []
-    print(__BATIMENT__[5:6])
-    result = calculate_financial('CA3', __SECTEUR__, __BATIMENT__, x, 120, finance_params, args)
+    # args = dict()
+    # supter = [50000]
+    # densite = [10]
+    # finance_params = x[(x['type'].isin(['financial'])) & (x['sector'] == 'Secteur 1')]
+    #
+    # # tab = []
+    # print(__BATIMENT__[5:6])
+    # result = calculate_financial('CA3', __SECTEUR__, __BATIMENT__, x, 120, finance_params, args)
     # r = result.loc[result[result['value'] == 'marge beneficiaire'].index[0], __BATIMENT__]
     # best_batiment = r.astype(float).idxmax(skipna=True)
     # result = result[result['value'].isin(['ntu', 'TRI', 'marge beneficiaire'])]
@@ -860,34 +908,34 @@ if __name__ == '__main__':
 
 
 
-    # couleur_secteur = {}
-    # couleur = ['Jaune', 'Vert', 'Bleu pâle', 'Bleu', 'Mauve', 'Rouge', 'Noir']
-    #
-    # for pos in range(len( __SECTEUR__)):
-    #     couleur_secteur[couleur[pos]] = __SECTEUR__[pos]
-    #
-    # terrain_dev = pd.read_excel(__FILES_NAME__, sheet_name='terrains')
-    #
-    # header_dict = {'SuperficieTerrain_Pi2': 'sup_ter', 'COS max formule': 'denm_p', 'couleur': 'sector',
-    #                'Valeur terrain p2 PROVISOIRE': 'vat'}
-    # terrain_dev.rename(columns = header_dict, inplace=True)
-    #
-    # terrain_dev = terrain_dev[['ID', 'sup_ter', 'denm_p', 'sector', 'vat']]
-    #
-    # terrain_dev.loc[:, 'sector'] = terrain_dev['sector'].replace(couleur_secteur)
-    #
-    # start = time.time()
-    # terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat']).reset_index(drop=True).head(250)
-    #
-    # cb3 = terr.groupby('ID').apply(get_summary_value).reset_index(drop=True)
-    # ca3 = get_ca_characteristic(cb3['sector'].unique(), __BATIMENT__, cb3)
-    #
-    # # Add cost intrants.
-    # cost_intrant = ca3.groupby('sector').apply(add_cost_params, terr).reset_index(drop=True)
-    # cost = calcul_cout_batiment(cost_intrant, cb3['sector'].unique(), __BATIMENT__)
-    # end = time.time()
-    #
-    # print(cost.shape)
-    # print(start - end)
+    couleur_secteur = {}
+    couleur = ['Jaune', 'Vert', 'Bleu pâle', 'Bleu', 'Mauve', 'Rouge', 'Noir']
+
+    for pos in range(len( __SECTEUR__)):
+        couleur_secteur[couleur[pos]] = __SECTEUR__[pos]
+
+    terrain_dev = pd.read_excel(__FILES_NAME__, sheet_name='terrains')
+
+    header_dict = {'SuperficieTerrain_Pi2': 'sup_ter', 'COS max formule': 'denm_p', 'couleur': 'sector',
+                   'Valeur terrain p2 PROVISOIRE': 'vat'}
+    terrain_dev.rename(columns = header_dict, inplace=True)
+
+    terrain_dev = terrain_dev[['ID', 'sup_ter', 'denm_p', 'sector', 'vat']]
+
+    terrain_dev.loc[:, 'sector'] = terrain_dev['sector'].replace(couleur_secteur)
+
+    start = time.time()
+    terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat']).reset_index(drop=True).tail(50)
+
+    cb3 = terr.groupby('ID').apply(get_summary_value).reset_index(drop=True)
+    ca3 = get_ca_characteristic(cb3['sector'].unique(), __BATIMENT__, cb3)
+
+    # Add cost intrants.
+    cost_intrant = ca3.groupby('sector').apply(add_cost_params, terr).reset_index(drop=True)
+    cost = calcul_cout_batiment(cost_intrant, cb3['sector'].unique(), __BATIMENT__)
+    end = time.time()
+
+    print(cost.shape)
+    print(start - end)
 
 

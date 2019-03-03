@@ -476,7 +476,8 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
     # Frais de parc
     sup_parc = table_of_intrant[(table_of_intrant['value'] == 'sup_parc') & (table_of_intrant['category'] == 'ALL')][
         batiment].reset_index(drop=True)
-    result = (sup_parc * price_land * 0.1/ supbtu)
+
+    result = (sup_parc * price_land * 0.1 / supbtu)
     result['category'] = 'unique'
     result["value"] = 'frais_parc'
     result['sector'] = secteur
@@ -554,10 +555,12 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
 
     return table_of_intrant
 
+
 def calculate_cost(type, secteur, batiment, params, *args):
 
     params = get_summary_characteristics(type, secteur, batiment, params, *args)
     return calcul_cout_batiment(params,  secteur, batiment)
+
 
 if __name__ == '__main__':
 
