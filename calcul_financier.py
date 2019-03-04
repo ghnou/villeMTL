@@ -769,60 +769,6 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
     rev = rev.rename(columns={'x': 'revenus totaux'})
     summary = pd.merge(summary, rev, on=['sector', 'batiment'])
 
-    # # financials_result.to_excel('test.xlsx')
-    #
-    # # total interet projet
-    # inter_proj = financials_result[['32']].groupby(financials_result['batiment']).sum().reset_index()
-    # inter_proj = inter_proj.set_index('batiment').transpose()
-    # inter_proj['category'] = 'total'
-    # inter_proj['value'] = 'total interet projet'
-    # inter_proj['sector'] = secteur
-    # inter_proj['type'] = 'result'
-    # inter_proj = inter_proj[cost_table.columns]
-    #
-    # # total cout avec interet
-    # total_cout_interet = summary[summary['value'] == 'cout total du projet'][batiment].reset_index()
-    # total_cout_interet = total_cout_interet + inter_terr[batiment].reset_index(drop=True) + inter_proj[batiment].reset_index(drop=True)
-    # total_cout_interet['category'] = 'total'
-    # total_cout_interet['value'] = 'total cout avec interet'
-    # total_cout_interet['sector'] = secteur
-    # total_cout_interet['type'] = 'result'
-    # total_cout_interet = total_cout_interet[cost_table.columns]
-    # #
-    # # # Financement projet (avec interets)
-    # # fin_proj_av_i = financials_result[['30', '33']].sum(axis=1).groupby(financials_result['batiment']).sum().reset_index()
-    # # fin_proj_av_i = fin_proj_av_i.set_index('batiment').transpose()
-    # # fin_proj_av_i['sector'] = secteur
-    # # fin_proj_av_i['category'] = 'total'
-    # # fin_proj_av_i['value'] = 'Financement projet (avec interets)'
-    # # fin_proj_av_i = fin_proj_av_i[cost_table.columns]
-    # #
-    # # # Equite dans le projet
-    # # eq_dans_proj = financials_result[['19']].groupby(financials_result['batiment']).sum().reset_index()
-    # # eq_dans_proj =-1 * eq_dans_proj.set_index('batiment').transpose()
-    # # eq_dans_proj['sector'] = secteur
-    # # eq_dans_proj['category'] = 'total'
-    # # eq_dans_proj['value'] = 'Equite dans le projet'
-    # # eq_dans_proj = eq_dans_proj[cost_table.columns]
-    # #
-    # # Revenus totaux
-    # rev_totaux = financials_result[['51']].groupby(financials_result['batiment']).sum().reset_index()
-    # x = financials_result[['52']].groupby(financials_result['batiment']).sum().reset_index()
-    # rev_totaux = rev_totaux.set_index('batiment').transpose().reset_index(drop=True) + x.set_index('batiment').transpose().reset_index(drop=True)
-    # rev_totaux['sector'] = secteur
-    # rev_totaux['category'] = 'total'
-    # rev_totaux['value'] = 'revenus totaux'
-    # rev_totaux['type'] = 'result'
-    # rev_totaux = rev_totaux[cost_table.columns]
-    #
-    # # Profit net
-    # prof_net = rev_totaux[batiment].reset_index(drop=True) - total_cout_interet[batiment].reset_index(drop=True)
-    # prof_net['sector'] = secteur
-    # prof_net['category'] = 'total'
-    # prof_net['value'] = 'profit net'
-    # prof_net['type'] = 'result'
-    # prof_net = prof_net[cost_table.columns]
-
     # TRI
     tri = financials_result[['sector', 'batiment', '39']].groupby(['sector', 'batiment']).apply(calculate_irr)
     tri = np.round(100 * ((1 + tri/100)**12 - 1), 2)
@@ -839,26 +785,8 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
     # inter_terr = inter_terr.rename(columns={'58': 'total interet terrain'})
     summary = pd.merge(summary, inter_terr, on=['sector', 'batiment'])
     # print(summary)
-    summary.to_excel('test.xlsx')
-    return
-    tri = tri.to_frame().transpose()
-    tri['category'] = 'total'
-    tri['value'] = 'TRI'
-    tri['sector'] = secteur
-    tri['type'] = 'result'
-    tri = tri[cost_table.columns]
-
-    # # Marge Beneficiare
-    # marge = prof_net[batiment].reset_index(drop=True)/total_cout_interet[batiment].reset_index(drop=True)
-    # marge['sector'] = secteur
-    # marge['category'] = 'total'
-    # marge['value'] = 'marge beneficiaire'
-    # marge['type'] = 'result'
-    # marge = marge[cost_table.columns]
-    # summary = pd.concat([summary, inter_terr, inter_proj, total_cout_interet, rev_totaux,prof_net,  tri, marge],
-    #                     ignore_index=True)
-
     return summary
+
 
 def calculate_financial(type, secteur, batiment, params, timeline, cost, finance_params, *args):
 

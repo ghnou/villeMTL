@@ -822,6 +822,8 @@ def get_ca_characteristic(secteur, batiment, table_of_intrant):
     value = table_of_intrant[(table_of_intrant['value'].isin(['min_ne', 'max_ne', 'min_ne_ss', 'max_ne_ss', 'denm_p', 'ntu', 'floor', 'floor_ss', 'dens', 'ntu'])) &
                              (table_of_intrant['category'] == 'ALL')]
 
+    value.loc[value['value'] == 'max_ne', 'max_ne'] = value['value'].where(value['value'] != 0, 1000)
+
     result = value[['value'] + batiment].groupby(value['sector']).apply(go_no_go, batiment)
 
     result.loc[:, 'type'] = 'go_no_go'
