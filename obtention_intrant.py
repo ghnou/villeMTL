@@ -1,3 +1,4 @@
+import math
 import numpy as np
 import pandas as pd
 import xlrd
@@ -94,6 +95,55 @@ def get_mean_brute_surface(group, data):
     df['category'] = group.name
 
     return df
+
+
+def validate_batiment(data, ntu):
+
+    sector = data.name
+    group = data.copy()
+    nu = ntu[ntu['sector'] == sector].fillna(-10)
+    nu = nu.set_index('sector').transpose()
+    nu = nu[nu[sector] <= 0].index
+
+    group.loc[group['value'] != 'go_no_go', nu] = np.nan
+
+    return group
+
+def go_no_go(group, header):
+
+    data = group.copy()
+
+    min_ne = data[data['value'] == 'min_ne'][header]
+    max_ne = data[data['value'] == 'max_ne'][header]
+    floor = data[data['value'] == 'floor'][header]
+
+    floor = floor.where(floor >= min_ne.values, 0)
+    floor = floor.where(floor <= max_ne.values, 0)
+    floor = floor.where(floor == 0, 1)
+
+    min_ne = data[data['value'] == 'min_ne_ss'][header]
+    max_ne = data[data['value'] == 'min_ne_ss'][header]
+    floor_ss = data[data['value'] == 'floor_ss'][header]
+
+    floor_ss = floor_ss.where(floor_ss >= min_ne.values, 0)
+    floor_ss = floor_ss.where(floor_ss <= max_ne.values, 0)
+    floor_ss = floor_ss.where(floor_ss == 0, 1)
+
+    dens = data[data['value'] == 'dens'][header]
+    denm_p = data[data['value'] == 'denm_p'][header]
+
+    dens = dens.where(dens < denm_p.values,0)
+    dens = dens.where(dens == 0, 1)
+
+    go = dens.reset_index(drop=True) + floor.reset_index(drop=True) + floor_ss.reset_index(drop=True)
+
+    go = go.where(go == 0, 1)
+    ntu = data[data['value'] == 'ntu'][header]
+    go = go.where(ntu.values > 0, 0)
+
+    return go
+
+
 
 
 def get_all_informations(workbook) -> pd.DataFrame:
@@ -281,7 +331,6 @@ def get_all_informations(workbook) -> pd.DataFrame:
     t['type'] = 'price'
     t = t[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, t])
-
     tab_of_intrant_pos = [[[67, 2], 'stat']]
     t = []
     for value in tab_of_intrant_pos:
@@ -595,10 +644,11 @@ def get_ca_characteristic(secteur, batiment, table_of_intrant):
     table_of_intrant.loc[mask, batiment] = table_of_intrant[mask][batiment].astype(float).round(0).astype(int)
 
     t = table_of_intrant[mask]
-    ntu = t.groupby('sector')[batiment].sum().reset_index()
+    ntu = t[batiment].groupby(t['sector']).sum().reset_index()
+
+
     mask = (table_of_intrant['value'] == 'ntu') & (table_of_intrant['category'] == 'ALL')
     table_of_intrant.loc[mask, ['sector'] + batiment] = ntu.values
-
     x = table_of_intrant[(table_of_intrant['value'] == 'ntu') |
                          (table_of_intrant['value'] == 'tum') &
                          (table_of_intrant['category'] != 'ALL')]
@@ -737,6 +787,59 @@ def get_ca_characteristic(secteur, batiment, table_of_intrant):
     result = dens[entete]
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
 
+    # Go No Go
+    # --> Floor Hs
+    supbtu = table_of_intrant[(table_of_intrant['value'] == 'supbtu')]
+    sup_bru_one_floor = table_of_intrant[table_of_intrant['value'] == 'sup_bru_one_floor']
+    floor_hs = supbtu[batiment].reset_index(drop=True) / sup_bru_one_floor[batiment].reset_index(drop=True)
+
+    # --> Floor Commercial
+    floor_com = sup_com[batiment].reset_index(drop=True) / sup_bru_one_floor[batiment].reset_index(drop=True)
+
+    # --> Floor chalet
+    chalet_floor = supt_cu[batiment].reset_index(drop=True) * (1 - cir[batiment].reset_index(drop=True)) / \
+                   sup_bru_one_floor[batiment].reset_index(drop=True)
+
+    floor = floor_hs + floor_com + chalet_floor
+
+    floor = floor.astype(float).apply(np.round)
+    floor['category'] = 'ALL'
+    floor['value'] = 'floor'
+    floor['sector'] = secteur
+    floor['type'] = 'intrants'
+    result = floor[entete]
+    table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
+
+    sup_ces = table_of_intrant[table_of_intrant['value'] == 'ss_sup_CES']
+    floor_ss = sup_ss[batiment].reset_index(drop=True) / (sup_bru_one_floor[batiment].reset_index(drop=True)  * sup_ces[batiment].reset_index(drop=True))
+    floor_ss = floor_ss.astype(float).apply(np.ceil)
+    floor_ss['category'] = 'ALL'
+    floor_ss['value'] = 'floor_ss'
+    floor_ss['sector'] = secteur
+    floor_ss['type'] = 'intrants'
+    result = floor_ss[entete]
+    table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
+    value = table_of_intrant[(table_of_intrant['value'].isin(['min_ne', 'max_ne', 'min_ne_ss', 'max_ne_ss', 'denm_p', 'ntu', 'floor', 'floor_ss', 'dens', 'ntu'])) &
+                             (table_of_intrant['category'] == 'ALL')]
+
+    result = value[['value'] + batiment].groupby(value['sector']).apply(go_no_go, batiment)
+    print(result)
+
+    result.loc[:, 'type'] = 'go_no_go'
+    result.loc[:,'category'] = 'ALL'
+    result.loc[:,'sector'] = secteur
+    result.loc[:,'value'] = 'go_no_go'
+
+    table_of_intrant = pd.concat([table_of_intrant, result],ignore_index=True)
+
+
+    # Validate number of units
+    mask = (table_of_intrant['value'] == 'ntu') & (table_of_intrant['category'] == 'ALL')
+    ntu = table_of_intrant[mask][['sector'] + batiment]
+    ntu.loc[:, batiment] = ntu.where(ntu[batiment] > 0, np.nan)
+    table_of_intrant = table_of_intrant.groupby('sector').apply(validate_batiment, ntu).reset_index(drop=True)
+    print(table_of_intrant.tail(10))
+
     return table_of_intrant
 
 
@@ -804,6 +907,7 @@ def get_cb3_characteristic(secteur, batiment, table_of_intrant, *args):
     result = result[entete]
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
 
+
     # Brute surface of 1 floor
     result = sup_ter[batiment].reset_index(drop=True).astype(float) * ces[batiment].reset_index(drop=True)
     result['category'] = 'ALL'
@@ -830,13 +934,11 @@ def get_cb3_characteristic(secteur, batiment, table_of_intrant, *args):
     sup_tot_hs = table_of_intrant[table_of_intrant['value'] == 'sup_tot_hs']
     result = sup_tot_hs[batiment].reset_index(drop=True) - sup_com - supt_cu
     suptu = result * (1 - cir[batiment].reset_index(drop=True))
-
     result['category'] = 'ALL'
     result['value'] = 'supbtu'
     result['sector'] = secteur
     result['type'] = 'intrants'
     result = result[entete]
-
     sup_com['category'] = 'ALL'
     sup_com['value'] = 'sup_com'
     sup_com['sector'] = secteur
@@ -898,7 +1000,6 @@ def get_cb3_characteristic(secteur, batiment, table_of_intrant, *args):
     ntu = ntu[entete]
     table_of_intrant = pd.concat([table_of_intrant, ntu],
                                  ignore_index=True)
-
     # nombre total unite par type unite
     pptu = table_of_intrant[table_of_intrant['value'] == 'pptu']
     result = pptu.groupby(pptu['sector']).apply(convert_unity_type_to_sector, ntu, batiment).reset_index(drop=True)
@@ -2053,10 +2154,10 @@ if __name__ == '__main__':
     x = get_all_informations(myBook)
 
     args = dict()
-    supter = [50000]
-    densite = [10]
-    t = get_summary_characteristics('CA3', __SECTEUR__, __BATIMENT__, x, args)
-    t.to_excel('test.xlsx')
+    args['sup_ter'] = [[159]]
+    args['denm_p'] = [[5]]
+    args['vat'] = [[64]]
+    t = get_summary_characteristics('CA3', __SECTEUR__[1:2], __BATIMENT__, x, args)
     # for ter in supter:
     #     for dens in densite:
     #         args = dict()

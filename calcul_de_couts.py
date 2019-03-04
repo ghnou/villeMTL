@@ -51,7 +51,7 @@ def apply_mutation_function(x) -> float:
         return x * 0.005
 
 
-def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
+def calcul_cout_batiment(secteur, batiment, table_of_intrant, cost_params) -> pd.DataFrame:
 
     """""
     This function is used to compute the cost of a builiding given a specific sector.
@@ -94,33 +94,39 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
     #
     ##################################################################################################################
 
+
+
     # Coquille
-    tc = table_of_intrant[table_of_intrant['value'] == 'tcq'].reset_index(drop=True)
+    tc = cost_params[cost_params['value'] == 'tcq'].reset_index(drop=True)
     sup_tot_hs = table_of_intrant[table_of_intrant['value'] == 'sup_tot_hs'].reset_index(drop=True)
-    result = tc[batiment] * sup_tot_hs[batiment]
-    result[['sector', 'value']] = tc[['sector', 'value']]
+    result = tc[batiment].values * sup_tot_hs[batiment]
+    result['sector'] = secteur
+    result['value'] = 'tcq'
     result['category'] = 'unique'
     result['type'] = 'cost'
     result = result[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
 
+
     # Sous Sol
-    tss = table_of_intrant[table_of_intrant['value'] == 'tss'].reset_index(drop=True)
+    tss = cost_params[cost_params['value'] == 'tss'].reset_index(drop=True)
     sup_ss = table_of_intrant[table_of_intrant['value'] == 'sup_ss'].reset_index(drop=True)
-    result = tss[batiment] * sup_ss[batiment]
-    result[['sector', 'value']] = tss[['sector', 'value']]
+    result = tss[batiment].values * sup_ss[batiment]
+    result['sector'] = secteur
+    result['value'] = 'tss'
     result['category'] = 'unique'
     result['type'] = 'cost'
     result = result[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
+
 
     # Travaux Finition unite de marche
     suptu = table_of_intrant[
         (table_of_intrant['value'] == 'suptu') & (table_of_intrant['category'].isin(__UNITE_TYPE__[0:5]))].reset_index(
         drop=True)
     suptu = suptu[batiment].groupby(suptu['sector']).sum().reset_index(drop=True)
-    tfu = table_of_intrant[table_of_intrant['value'] == 'tfu'].reset_index(drop=True)
-    result = tfu[batiment] * suptu
+    tfu = cost_params[cost_params['value'] == 'tfu'].reset_index(drop=True)
+    result = tfu[batiment].values * suptu
     result['sector'] = secteur
     result['value'] = 'tfum'
     result['category'] = 'unique'
@@ -128,28 +134,31 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
     result = result[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
 
+
     # Allocation pour cuisine, salle de bain unite de marche
     ntu = table_of_intrant[
         (table_of_intrant['value'] == 'ntu') & (table_of_intrant['category'].isin(__UNITE_TYPE__[0:5]))].reset_index(
         drop=True)
+
+
     ntu.loc[ntu['category'].isin(__UNITE_TYPE__[3:5]), batiment] = 1.5 * ntu[batiment]
     ntu = ntu[batiment].groupby(ntu['sector']).sum().reset_index(drop=True)
 
-    val = table_of_intrant[table_of_intrant['value'] == 'all_cuis'].reset_index(drop=True)
+    val = cost_params[cost_params['value'] == 'all_cuis'].reset_index(drop=True)
+    result = val[batiment].values * ntu[batiment]
 
-    result = ntu[batiment] * val[batiment]
-
-    result['sector'] = val['sector']
+    result['sector'] = secteur
     result['value'] = 'cuisum'
     result['category'] = 'unique'
     result['type'] = 'cost'
     result = result[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
 
-    val = table_of_intrant[table_of_intrant['value'] == 'all_sdb'].reset_index(drop=True)
+
+    val = cost_params[cost_params['value'] == 'all_sdb'].reset_index(drop=True)
     val.loc[val['category'].isin(__UNITE_TYPE__[3:5]), batiment] = 1.5 * val[batiment]
-    result = ntu[batiment] * val[batiment]
-    result['sector'] = val['sector']
+    result = val[batiment].values * ntu[batiment]
+    result['sector'] = secteur
     result['value'] = 'saldbum'
     result['category'] = 'unique'
     result['type'] = 'cost'
@@ -162,34 +171,36 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
         (table_of_intrant['value'] == 'suptu') & (table_of_intrant['category'].isin(__UNITE_TYPE__[5:]))].reset_index(
         drop=True)
     suptu = suptu[batiment].groupby(suptu['sector']).sum().reset_index(drop=True)
-    tfu = table_of_intrant[table_of_intrant['value'] == 'tfu'].reset_index(drop=True)
+    tfu = cost_params[cost_params['value'] == 'tfu'].reset_index(drop=True)
 
-    result = tfu[batiment] * suptu[batiment]
-    result['sector'] = tfu['sector']
+    result = tfu[batiment].values * suptu[batiment]
+    result['sector'] = secteur
     result['value'] = 'tfuf'
     result['category'] = 'unique'
     result['type'] = 'cost'
     result = result[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
 
+
+
     # Allocation pour cuisine, salle de bain unite de marche
     ntu = table_of_intrant[
         (table_of_intrant['value'] == 'ntu') & (table_of_intrant['category'].isin(__UNITE_TYPE__[5:]))].reset_index(
         drop=True)
     ntu = ntu[batiment].groupby(ntu['sector']).sum().reset_index(drop=True)
-    val = table_of_intrant[table_of_intrant['value'] == 'all_cuis'].reset_index(drop=True)
-    result = ntu[batiment] * val[batiment] * 1.5
+    val = cost_params[cost_params['value'] == 'all_cuis'].reset_index(drop=True)
+    result = val[batiment].values * ntu[batiment] * 1.5
 
-    result['sector'] = val['sector']
+    result['sector'] = secteur
     result['value'] = 'cuisuf'
     result['category'] = 'unique'
     result['type'] = 'cost'
     result = result[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
 
-    val = table_of_intrant[table_of_intrant['value'] == 'all_sdb'].reset_index(drop=True)
-    result = ntu[batiment] * val[batiment]
-    result['sector'] = val['sector']
+    val = cost_params[cost_params['value'] == 'all_sdb'].reset_index(drop=True)
+    result = val[batiment].values * ntu[batiment]
+    result['sector'] = secteur
     result['value'] = 'saldbuf'
     result['category'] = 'unique'
     result['type'] = 'cost'
@@ -203,8 +214,8 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
     totbum = table_of_intrant[(table_of_intrant['value'].isin(['tfum', 'cuisum',  'saldbum'])) &
                               (table_of_intrant['type'] == 'cost')]
     totbum = totbum[batiment].groupby(totbum['sector']).sum().reset_index(drop=True)
-    qum = table_of_intrant[table_of_intrant['value'] == 'qum'].reset_index(drop=True)
-    result = totbum[batiment] * qum[batiment]
+    qum = cost_params[cost_params['value'] == 'qum'].reset_index(drop=True)
+    result = qum[batiment].values * totbum[batiment]
     result['sector'] = secteur
     result['value'] = 'cfum'
     result['category'] = 'unique'
@@ -212,11 +223,12 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
     result = result[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
 
+
     totbum = table_of_intrant[(table_of_intrant['value'].isin(['tfuf', 'cuisuf',  'saldbuf'])) &
                               (table_of_intrant['type'] == 'cost')]
     totbum = totbum[batiment].groupby(totbum['sector']).sum().reset_index(drop=True)
-    qum = table_of_intrant[table_of_intrant['value'] == 'quf'].reset_index(drop=True)
-    result = totbum[batiment] * qum[batiment]
+    qum = cost_params[cost_params['value'] == 'quf'].reset_index(drop=True)
+    result = qum[batiment].values * totbum[batiment]
     result['sector'] = secteur
     result['value'] = 'cfuf'
     result['category'] = 'unique'
@@ -224,14 +236,15 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
     result = result[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
 
+
     # Travaux finitions aires communes
     aire_commune = table_of_intrant[(table_of_intrant['value'].isin(['supbtu', 'cir']))
                                     & (table_of_intrant['category'] == 'ALL')][
         ['sector'] + batiment].reset_index(drop=True)
 
     aire_commune = aire_commune.groupby('sector').prod().reset_index(drop=True)
-    tvfac = table_of_intrant[table_of_intrant['value'] == 'tvfac'][batiment].reset_index(drop=True)
-    tvfac = tvfac[batiment] * aire_commune[batiment]
+    tvfac = cost_params[cost_params['value'] == 'tvfac'][batiment].reset_index(drop=True)
+    tvfac = tvfac[batiment].values * aire_commune[batiment]
     tvfac['category'] = 'unique'
     tvfac['sector'] = secteur
     tvfac['value'] = 'tvfac'
@@ -240,11 +253,10 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
 
 
-
     # ascenceurs
-    asc = table_of_intrant[table_of_intrant['value'] == 'asc'][batiment].reset_index(drop=True)
+    asc = cost_params[cost_params['value'] == 'asc'][batiment].reset_index(drop=True)
     nba = table_of_intrant[table_of_intrant['value'] == 'nba'][batiment].reset_index(drop=True)
-    asc = asc  * nba
+    asc = asc.values * nba
     asc['category'] = 'unique'
     asc['sector'] = secteur
     asc['value'] = 'asc'
@@ -252,15 +264,14 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
     result = asc[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
 
-
     # Cout additionnel Piscine
     pisc = table_of_intrant[(table_of_intrant['value'] == 'pisc') &
                             (table_of_intrant['category'] == 'ALL')][batiment].reset_index(drop=True)
     pisc.replace({'Non': 0, 'Oui': 1}, inplace=True)
 
 
-    c_ad_pisc = table_of_intrant[table_of_intrant['value'] == 'c_ad_pisc'][batiment].reset_index(drop=True)
-    c_ad_pisc = c_ad_pisc * pisc
+    c_ad_pisc = cost_params[cost_params['value'] == 'c_ad_pisc'][batiment].reset_index(drop=True)
+    c_ad_pisc = c_ad_pisc.values * pisc
     c_ad_pisc['category'] = 'unique'
     c_ad_pisc['sector'] = secteur
     c_ad_pisc['value'] = 'c_ad_pisc'
@@ -272,8 +283,8 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
     # Cout additionnel chalet urbain
     cub = table_of_intrant[table_of_intrant['value'] == 'cub'][batiment].reset_index(drop=True)
     cub.replace({'Non': 0, 'Oui': 1}, inplace=True)
-    c_ad_cu = table_of_intrant[table_of_intrant['value'] == 'c_ad_cu'][batiment].reset_index(drop=True)
-    c_ad_cu = c_ad_cu * cub
+    c_ad_cu = cost_params[cost_params['value'] == 'c_ad_cu'][batiment].reset_index(drop=True)
+    c_ad_cu = c_ad_cu.values* cub
     c_ad_cu['category'] = 'unique'
     c_ad_cu['sector'] = secteur
     c_ad_cu['value'] = 'c_ad_cu'
@@ -284,9 +295,9 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
     # cout additionnel espace commmerciaux
     sup_com = table_of_intrant[table_of_intrant['value'] == 'sup_com'][batiment].reset_index(drop=True)
     cir = table_of_intrant[table_of_intrant['value'] == 'cir'][batiment].reset_index(drop=True)
-    c_ad_com = table_of_intrant[table_of_intrant['value'] == 'c_ad_com'][batiment].reset_index(drop=True)
+    c_ad_com = cost_params[cost_params['value'] == 'c_ad_com'][batiment].reset_index(drop=True)
 
-    c_ad_com = c_ad_com * sup_com * (1 - cir)
+    c_ad_com = c_ad_com.values * sup_com * (1 - cir)
     c_ad_com['category'] = 'unique'
     c_ad_com['sector'] = secteur
     c_ad_com['value'] = 'c_ad_com'
@@ -301,14 +312,15 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
                           (table_of_intrant['category'] == 'unique')][['sector'] + batiment].reset_index(drop=True)
 
     su = su.groupby('sector').sum().reset_index(drop=True)
-    it = table_of_intrant[(table_of_intrant['value'] == 'it')][batiment].reset_index(drop=True)
-    it = su /(1 - it) - su
+    it = cost_params[(cost_params['value'] == 'it')][batiment].reset_index(drop=True)
+    it = (1/(1 - it.values)) *  su  - su
     it['category'] = 'unique'
     it['sector'] = secteur
     it['value'] = 'it'
     it['type'] = 'cost'
     result = it[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result],ignore_index=True)
+
 
     # Sous total couts de construction
     cct = su + it
@@ -319,6 +331,7 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
     result = cct[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result],ignore_index=True)
 
+
     ##################################################################################################################
     #
     # SOFT COST
@@ -326,16 +339,21 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
     ##################################################################################################################
 
     # Arpenteur-geometre
-    apt_geo = table_of_intrant[table_of_intrant['value'] == 'apt_geo'][['sector', 'value'] + batiment]
+    apt_geo = cost_params[cost_params['value'] == 'apt_geo'][batiment].reset_index(drop=True)
+    sup_com = table_of_intrant[table_of_intrant['value'] == 'sup_com'][batiment].reset_index(drop=True)
+    sup_com[batiment] = 1
+    apt_geo = apt_geo.values * sup_com
+    apt_geo['sector'] = secteur
     apt_geo['category'] = 'unique'
     apt_geo['type'] = 'cost'
+    apt_geo['value'] = 'apt_geo'
     result = apt_geo[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result],ignore_index=True)
 
 
     # Professionnels
-    prof = table_of_intrant[table_of_intrant['value'] == 'prof'][batiment].reset_index(drop=True)
-    prof = prof * cct[batiment]
+    prof = cost_params[cost_params['value'] == 'prof'][batiment].reset_index(drop=True)
+    prof = prof.values * cct[batiment]
     prof['category'] = 'unique'
     prof['sector'] = secteur
     prof['value'] = 'prof'
@@ -345,31 +363,41 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
 
 
     # Evaluator
-    eval = table_of_intrant[table_of_intrant['value'] == 'eval'][['sector', 'value'] + batiment]
-    eval['category'] = 'unique'
-    eval['type'] = 'cost'
-    result = eval[table_of_intrant.columns]
+    apt_geo = cost_params[cost_params['value'] == 'eval'][batiment].reset_index(drop=True)
+    apt_geo = apt_geo.values * sup_com
+    apt_geo['sector'] = secteur
+    apt_geo['category'] = 'unique'
+    apt_geo['type'] = 'cost'
+    apt_geo['value'] = 'eval'
+    result = apt_geo[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result],ignore_index=True)
 
 
     # Legal Fee
-    legal_fee = table_of_intrant[table_of_intrant['value'] == 'legal_fee'][['sector', 'value'] + batiment]
-    legal_fee['category'] = 'unique'
-    legal_fee['type'] = 'cost'
-    result = legal_fee[table_of_intrant.columns]
+    apt_geo = cost_params[cost_params['value'] == 'legal_fee'][batiment].reset_index(drop=True)
+    apt_geo = apt_geo.values * sup_com
+    apt_geo['sector'] = secteur
+    apt_geo['category'] = 'unique'
+    apt_geo['type'] = 'cost'
+    apt_geo['value'] = 'legal_fee'
+    result = apt_geo[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result],ignore_index=True)
+
 
     # Professionnal fee divers
-    prof_fee_div = table_of_intrant[table_of_intrant['value'] == 'prof_fee_div'][['sector', 'value'] + batiment]
-    prof_fee_div['category'] = 'unique'
-    prof_fee_div['type'] = 'cost'
-    result = prof_fee_div[table_of_intrant.columns]
+    apt_geo = cost_params[cost_params['value'] == 'prof_fee_div'][batiment].reset_index(drop=True)
+    apt_geo = apt_geo.values * sup_com
+    apt_geo['sector'] = secteur
+    apt_geo['category'] = 'unique'
+    apt_geo['type'] = 'cost'
+    apt_geo['value'] = 'prof_fee_div'
+    result = apt_geo[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result],ignore_index=True)
 
+
     # Pub
-    pub = table_of_intrant[(table_of_intrant['value'] == 'pub') & (table_of_intrant['category'] == 'ALL')][batiment].reset_index(
-        drop=True)
-    pub = pub * cct[batiment]
+    pub = cost_params[cost_params['value'] == 'pub'][batiment].reset_index(drop=True)
+    pub = pub.values * cct[batiment]
     pub['category'] = 'unique'
     pub['sector'] = secteur
     pub['value'] = 'pub'
@@ -377,9 +405,10 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
     result = pub[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result],ignore_index=True)
 
+
     # Construction permit
-    construction_permit =  table_of_intrant[table_of_intrant['value'] == 'construction_permit'][batiment].reset_index(drop=True)
-    construction_permit = construction_permit * cct[batiment] / 1000
+    construction_permit =  cost_params[cost_params['value'] == 'construction_permit'][batiment].reset_index(drop=True)
+    construction_permit = construction_permit.values * cct[batiment] / 1000
     construction_permit['category'] = 'unique'
     construction_permit['sector'] = secteur
     construction_permit['value'] = 'construction_permit'
@@ -388,14 +417,15 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
     table_of_intrant = pd.concat([table_of_intrant, result],ignore_index=True)
 
     # honoraire
-    prof = table_of_intrant[table_of_intrant['value'] == 'hon_prom'][batiment].reset_index(drop=True)
-    prof = prof * cct[batiment]
+    prof = cost_params[cost_params['value'] == 'hon_prom'][batiment].reset_index(drop=True)
+    prof = prof.values * cct[batiment]
     prof['category'] = 'unique'
     prof['sector'] = secteur
     prof['value'] = 'hon_prom'
     prof['type'] = 'cost'
     result = prof[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result],ignore_index=True)
+
 
     # Total soft Cost
 
@@ -412,6 +442,8 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
     su['type'] = 'cost'
     result = su[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result],ignore_index=True)
+
+
 
 
     #################################################################################################################
@@ -471,7 +503,6 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
     result['type'] = 'cost'
     result = result[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result],ignore_index=True)
-
 
     # Frais de parc
     sup_parc = table_of_intrant[(table_of_intrant['value'] == 'sup_parc') & (table_of_intrant['category'] == 'ALL')][
@@ -545,31 +576,25 @@ def calcul_cout_batiment(table_of_intrant,  secteur, batiment) -> pd.DataFrame:
     result = su[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result],ignore_index=True)
 
-    result.loc[:, 'type'] = 'go_no_go'
-    result.loc[:,'category'] = 'ALL'
-    result.loc[:,'sector'] = secteur
-    result.loc[:,'value'] = 'go_no_go'
-    result.loc[:, batiment] = 1
-    # result.loc[:, batiment[0:4]] = 0
-    table_of_intrant = pd.concat([table_of_intrant, result],ignore_index=True)
 
     return table_of_intrant
 
 
-def calculate_cost(type, secteur, batiment, params, *args):
+def calculate_cost(type, secteur, batiment, params,cost, *args):
 
     params = get_summary_characteristics(type, secteur, batiment, params, *args)
-    return calcul_cout_batiment(params,  secteur, batiment)
+    return calcul_cout_batiment(secteur, batiment, params, cost)
 
 
 if __name__ == '__main__':
 
     myBook = xlrd.open_workbook(__FILES_NAME__)
     x = get_all_informations(myBook)
+    cost_params = x[(x['type'].isin(['pcost'])) & (x['sector'] == 'Secteur 1')]
     args = dict()
     supter = [50000]
     densite = [10]
-    t = calculate_cost('CA3', __SECTEUR__,  __BATIMENT__, x, args)
+    t = calculate_cost('CA3', __SECTEUR__,  __BATIMENT__, x, cost_params,args)
     t.to_excel('test.xlsx')
     # params = get_summary_characteristics('CB1', __SECTEUR__[0:4], __BATIMENT__[4:], x, args)
     # calcul_cout_batiment(params,  secteur, batiment)

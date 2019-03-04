@@ -1,10 +1,24 @@
+import time
+
 __author__ = 'pougomg'
 from calcul_de_couts import calcul_cout_batiment
 from calcul_financier import calcul_detail_financier
-from obtention_intrant import get_all_informations, get_summary_characteristics
+from obtention_intrant import get_all_informations, get_summary_characteristics, get_ca_characteristic, \
+    get_cb3_characteristic
 from scipy import optimize
+import pandas as pd
 import numpy as np
 import xlrd
+import collections
+import multiprocessing
+import os
+
+data_for_simulation = collections.namedtuple('data_for_simulation',[
+    'data',
+    'cost_params',
+    'financials_params',])
+
+
 from lexique import __FILES_NAME__, __SECTEUR__, __BATIMENT__
 
 def get_financials_results(z, *params):
@@ -50,47 +64,99 @@ def n(params):
 
     return value
 
+def get_land_informations():
+
+    couleur_secteur = {}
+
+    couleur = ['Jaune', 'Vert', 'Bleu pâle', 'Bleu', 'Mauve', 'Rouge', 'Noir']
+
+    for pos in range(len( __SECTEUR__)):
+        couleur_secteur[couleur[pos]] = __SECTEUR__[pos]
+
+    terrain_dev = pd.read_excel(__FILES_NAME__, sheet_name='terrains')
+
+    header_dict = {'SuperficieTerrain_Pi2': 'sup_ter', 'COS max formule': 'denm_p', 'couleur': 'sector',
+                   'Valeur terrain p2 PROVISOIRE': 'vat', 'etages_max': 'max_ne', 'etages_min': 'min_ne'}
+    terrain_dev.rename(columns = header_dict, inplace=True)
+
+    terrain_dev = terrain_dev[['ID', 'sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']]
+
+    terrain_dev.loc[:, 'sector'] = terrain_dev['sector'].replace(couleur_secteur)
+
+    return terrain_dev
+
+
+def get_summary(params):
+
+    print('Start Process: ', os.getpid())
+    def get_summary_value(group):
+
+        data = group.copy()
+
+        id_batiment = data.loc[:, 'ID'].values[0]
+        sup_ter = data.loc[:, 'sup_ter'].values[0]
+        denm_p = data.loc[:, 'denm_p'].values[0]
+        vat = data.loc[:, 'vat'].values[0]
+        min_ne = data.loc[:, 'min_ne'].values[0]
+        max_ne = data.loc[:, 'max_ne'].values[0]
+        sector = data.loc[:, 'sector'].values[0]
+
+        args = dict()
+        args['sup_ter'] = [[sup_ter]]
+        args['denm_p'] = [[denm_p]]
+        args['vat'] = [[vat]]
+        args['min_ne'] = [[min_ne]]
+        args['max_ne'] = [[max_ne]]
+        params = x[x['sector'] == sector]
+        params.loc[:, 'sector'] = id_batiment
+
+        result = get_cb3_characteristic([id_batiment], __BATIMENT__, params, args)
+
+        return result
+
+    data = params.data
+    cost_params = params.cost_params
+    financials_params = params.financials_params
+
+    cb3 = data.groupby('ID').apply(get_summary_value).reset_index(drop=True)
+    ca3 = get_ca_characteristic(cb3['sector'].unique(), __BATIMENT__, cb3)
+    print('Intrants completed for process: ', os.getpid())
+
+    # Add cost intrants.
+    cost_table = calcul_cout_batiment(cb3['sector'].unique(), __BATIMENT__, ca3, cost_params)
+    print('Cost completed for process: ', os.getpid())
+
+    # Get financials
+    return calcul_detail_financier(cb3['sector'].unique(), __BATIMENT__, 120, cost_table, financials_params)
 
 
 if __name__ == '__main__':
 
+    start = time.time()
+
     myBook = xlrd.open_workbook(__FILES_NAME__)
     x = get_all_informations(myBook)
-    args = dict()
+    cost_params = x[(x['type'].isin(['pcost'])) & (x['sector'] == 'Secteur 1')]
+    finance_params = x[(x['type'].isin(['financial'])) & (x['sector'] == 'Secteur 1')]
 
-    args['sup_ter'] = [[15000]]
-    args['denm_p'] = [[3]]
-    args['vat'] = [[85]]
+    terrain_dev = get_land_informations()
+    terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']).reset_index(drop=True)
+    intervall = np.array_split(terr.index, 16)
+    params = ()
 
-    objectif = 0.15
-    to_optimize = 'TRI'
+    for value in intervall:
 
-    table_intrant = get_summary_characteristics('CA3', __SECTEUR__[6:], __BATIMENT__, x, args)
-    # params = (table_intrant, __SECTEUR__[6:], __BATIMENT__, to_optimize, objectif)
-    # base_value = get_financials_results(args['vat'][0][0], *params)
-    #
-    # batiment = base_value.astype(float).idxmax(skipna=True)
-    # base_value = base_value[batiment]
-    #
-    # if base_value > objectif:
-    #     rranges = (slice(args['vat'][0][0], 1000, 200),)
-    #     params = (table_intrant, __SECTEUR__[6:], [batiment], to_optimize, objectif)
-    #     resbrute = optimize.brute(function_to_optimize, ranges=rranges,args=params, full_output=True, finish=None)
-    #
-    #     rranges = (slice(resbrute[0]-200, resbrute[0] + 200, 50),)
-    #     resbrute = optimize.brute(function_to_optimize, ranges=rranges,args=params, full_output=True, finish=None)
-    #
-    #     rranges = (slice(resbrute[0]-50, resbrute[0] + 50, 10),)
-    #     resbrute = optimize.brute(function_to_optimize, ranges=rranges,args=params, full_output=True, finish=None)
-    #
-    # else:
-    #     rranges = (slice(0, args['vat'][0][0], 200),)
-    #     params = (table_intrant, __SECTEUR__[6:], [batiment], to_optimize, objectif)
-    #     resbrute = optimize.brute(function_to_optimize, ranges=rranges,args=params, full_output=True, finish=None)
+        params += data_for_simulation(data=terr.loc[value, :],
+                                     cost_params=cost_params,
+                                     financials_params=finance_params),
+
+    pool = multiprocessing.Pool(16)
+    result = pool.map(get_summary, params)
+    pool.close()
+    pool.join()
+
+    end = time.time()
+
+    print(end - start)
 
 
-
-    rranges = (slice(0, 50, 1), slice(0, 50, 1), slice(0, 50, 1), slice(0, 50, 1))
-    resbrute = optimize.brute(n, ranges=rranges, finish=None)
-    print(resbrute[0])
-    print(resbrute[1])

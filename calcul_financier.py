@@ -856,7 +856,8 @@ if __name__ == '__main__':
 
     myBook = xlrd.open_workbook(__FILES_NAME__)
     x = get_all_informations(myBook)
-    cost = x[x['type'].isin(['pcost'])]
+    cost_params = x[(x['type'].isin(['pcost'])) & (x['sector'] == 'Secteur 1')]
+
     # args = dict()
     # supter = [50000]
     # densite = [10]
@@ -921,21 +922,19 @@ if __name__ == '__main__':
     terrain_dev.rename(columns = header_dict, inplace=True)
 
     terrain_dev = terrain_dev[['ID', 'sup_ter', 'denm_p', 'sector', 'vat']]
+    # terrain_dev = terrain_dev[terrain_dev['sup_ter'] >= 1000]
 
     terrain_dev.loc[:, 'sector'] = terrain_dev['sector'].replace(couleur_secteur)
 
     start = time.time()
-    terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat']).reset_index(drop=True).tail(50)
-
+    terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat']).reset_index(drop=True).tail(250)
     cb3 = terr.groupby('ID').apply(get_summary_value).reset_index(drop=True)
     ca3 = get_ca_characteristic(cb3['sector'].unique(), __BATIMENT__, cb3)
 
     # Add cost intrants.
-    cost_intrant = ca3.groupby('sector').apply(add_cost_params, terr).reset_index(drop=True)
-    cost = calcul_cout_batiment(cost_intrant, cb3['sector'].unique(), __BATIMENT__)
+    cost = calcul_cout_batiment(cb3['sector'].unique(), __BATIMENT__, ca3, cost_params)
     end = time.time()
 
-    print(cost.shape)
-    print(start - end)
+    print(end - start)
 
 
