@@ -575,6 +575,7 @@ def calcul_cout_batiment(secteur, batiment, table_of_intrant, cost_params) -> pd
     su['type'] = 'cost'
     result = su[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result],ignore_index=True)
+    table_of_intrant.to_excel('t.xlsx')
 
 
     return table_of_intrant

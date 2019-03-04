@@ -331,12 +331,12 @@ def get_all_informations(workbook) -> pd.DataFrame:
     t['type'] = 'price'
     t = t[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, t])
-    tab_of_intrant_pos = [[[67, 2], 'stat']]
+    tab_of_intrant_pos = [[[68, 2], 'stat']]
     t = []
     for value in tab_of_intrant_pos:
         t = ajouter_caraterisque_par_secteur(sh, t, value[1], value[0], 'ALL', False)
     t = pd.DataFrame(t, columns=entete)
-    t['type'] = 'financial'
+    t['type'] = 'intrants'
     t = t[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, t])
 
@@ -609,7 +609,7 @@ def get_ca_characteristic(secteur, batiment, table_of_intrant):
                       'min_ne', 'max_ne',
                       'min_ne_ss', 'max_ne_ss', 'cir', 'aec', 'si', 'pi_si', 'ee_ss', 'pi_ee', 'cub', 'sup_cu',
                       'supt_cu', 'pisc', 'sup_pisc', 'pp_sup_escom', 'pp_et_escom', 'ss_sup_CES', 'ss_sup_ter', 'nba',
-                      'min_max_asc', 'tap', 'price', 'cont_soc', 'parc', 'decont', 'rem']
+                      'min_max_asc', 'tap', 'price', 'cont_soc', 'parc', 'decont', 'rem', 'stat']
 
     table_of_intrant = table_of_intrant[(table_of_intrant['value'].isin(input_variable)) &
                                         (table_of_intrant['sector'].isin(secteur))][entete]
@@ -757,7 +757,7 @@ def get_ca_characteristic(secteur, batiment, table_of_intrant):
         batiment].reset_index(drop=True)
     v = v.where(ntu > 2, 0)
     v = v.where(v == 0, 1)
-    result = sup * (1 + cir[batiment].reset_index(drop=True)) * v
+    result = sup * (1 + cir[batiment].reset_index(drop=True)) * v * parc[batiment].reset_index(drop=True)
 
     result['category'] = 'ALL'
     result['value'] = 'sup_parc'
@@ -853,7 +853,7 @@ def get_cb3_characteristic(secteur, batiment, table_of_intrant, *args):
     input_variable = ['sup_ter', 'tum', 'vat', 'denm_p', 'ces', 'pptu', 'mp', 'min_nu', 'max_nu',
                       'min_ne', 'max_ne', 'min_ne_ss', 'max_ne_ss', 'cir', 'aec', 'si', 'pi_si', 'ee_ss', 'pi_ee',
                       'cub', 'sup_cu', 'supt_cu', 'pisc', 'sup_pisc', 'pp_sup_escom', 'pp_et_escom', 'ss_sup_CES',
-                      'ss_sup_ter', 'nba', 'min_max_asc', 'tap', 'price', 'cont_soc', 'parc', 'decont', 'rem']
+                      'ss_sup_ter', 'nba', 'min_max_asc', 'tap', 'price', 'cont_soc', 'parc', 'decont', 'rem', 'stat']
 
     table_of_intrant = table_of_intrant[(table_of_intrant['value'].isin(input_variable)) &
                                         (table_of_intrant['sector'].isin(secteur))][entete]
@@ -1049,7 +1049,7 @@ def get_cb3_characteristic(secteur, batiment, table_of_intrant, *args):
         batiment].reset_index(drop=True)
     v.where(ntu > 2, 0, inplace=True)
     v.where(ntu == 0, 1, inplace=True)
-    result = sup * (1 + cir[batiment].reset_index(drop=True)) * v
+    result = sup * (1 + cir[batiment].reset_index(drop=True)) * v * parc[batiment].reset_index(drop=True)
 
     result['category'] = 'ALL'
     result['value'] = 'sup_parc'

@@ -70,7 +70,7 @@ def get_land_informations():
 
     couleur = ['Jaune', 'Vert', 'Bleu pâle', 'Bleu', 'Mauve', 'Rouge', 'Noir']
 
-    for pos in range(len( __SECTEUR__)):
+    for pos in range(len(__SECTEUR__)):
         couleur_secteur[couleur[pos]] = __SECTEUR__[pos]
 
     terrain_dev = pd.read_excel(__FILES_NAME__, sheet_name='terrains')
@@ -109,7 +109,6 @@ def get_summary(params):
         args['max_ne'] = [[max_ne]]
         params = x[x['sector'] == sector]
         params.loc[:, 'sector'] = id_batiment
-
         result = get_cb3_characteristic([id_batiment], __BATIMENT__, params, args)
 
         return result
@@ -119,6 +118,8 @@ def get_summary(params):
     financials_params = params.financials_params
 
     cb3 = data.groupby('ID').apply(get_summary_value).reset_index(drop=True)
+    args = dict()
+    # cb3 = get_cb3_characteristic(__SECTEUR__, __BATIMENT__, x, args)
     ca3 = get_ca_characteristic(cb3['sector'].unique(), __BATIMENT__, cb3)
     print('Intrants completed for process: ', os.getpid())
 
@@ -140,13 +141,12 @@ if __name__ == '__main__':
     finance_params = x[(x['type'].isin(['financial'])) & (x['sector'] == 'Secteur 1')]
 
     terrain_dev = get_land_informations()
-    terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']).reset_index(drop=True).tail(20)
+    terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']).reset_index(drop=True).head(250)
     intervall = np.array_split(terr.index, 16)
     params = ()
-
     params = data_for_simulation(data=terr,
-                                     cost_params=cost_params,
-                                     financials_params=finance_params)
+                                 cost_params=cost_params,
+                                 financials_params=finance_params)
     get_summary(params)
 
     # for value in intervall:

@@ -142,13 +142,12 @@ def calcul_ecoulement_et_vente(data, nombre_total_unite):
     ntu = nombre_total_unite[(nombre_total_unite['category'].isin(__UNITE_TYPE__)) &
                              (nombre_total_unite['value'] == 'ntu') &
                              (nombre_total_unite['sector'] == sector)][[batiment, 'category']].set_index('category').transpose()
-
     ecob3mo = nombre_total_unite[(nombre_total_unite['category'].isin(__UNITE_TYPE__)) &
-                             (nombre_total_unite['value'] == 'ecob3mo') &
-                             (nombre_total_unite['sector'] == sector)][[batiment, 'category']].set_index('category').transpose()
+                             (nombre_total_unite['value'] == 'ecob3mo')
+                              ][[batiment, 'category']].set_index('category').transpose()
     ecoa3mo = nombre_total_unite[(nombre_total_unite['category'].isin(__UNITE_TYPE__)) &
-                             (nombre_total_unite['value'] == 'ecoa3mo') &
-                             (nombre_total_unite['sector'] == sector)][[batiment, 'category']].set_index('category').transpose()
+                             (nombre_total_unite['value'] == 'ecoa3mo')
+                              ][[batiment, 'category']].set_index('category').transpose()
 
     residu = [[0, 0, 0, 0, 0, 0, 0]]
     start_pos = 0
@@ -640,6 +639,7 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
 
     c = cost_table[(cost_table['value'] == 'ntu') & (cost_table['category'] == 'ALL')]
     go = cost_table[(cost_table['value'] == 'go_no_go') & (cost_table['category'] == 'ALL')]
+
     financials_result = []
 
     for sector in secteur:
@@ -668,12 +668,14 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
 
     # Ventes (Ecoulement et revenus bruts)
     result = financials_result[['sector', 'batiment', '3', '4']].groupby(['sector', 'batiment'])
+    data = finance_params[finance_params['value'].isin(['ecob3mo', 'ecoa3mo'])]
+    data = data[cost_table.columns]
     params = cost_table[cost_table['value'].isin(['ntu', 'ecob3mo', 'ecoa3mo', 'price', 'si', 'stat'])]
-    result = result.apply(calcul_ecoulement_et_vente, params)
+    params = pd.concat([params, data], ignore_index=True)
 
+    result = result.apply(calcul_ecoulement_et_vente, params)
     result = result.reset_index(drop=True)
     financials_result = pd.concat([financials_result, result], axis=1)
-    financials_result.to_excel('test.xlsx')
 
     # 50% des unites construites
     data = finance_params[finance_params['value'] == 'nv_min_prev_av_deb']
@@ -755,14 +757,18 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
     #
     ###################################################################################################################
 
-    # # total interet terrain
-    # inter_terr = financials_result[['29']].groupby(financials_result['batiment']).sum().reset_index()
-    # inter_terr = inter_terr.set_index('batiment').transpose()
-    # inter_terr['category'] = 'total'
-    # inter_terr['value'] = 'total interet terrain'
-    # inter_terr['sector'] = secteur
-    # inter_terr['type'] = 'result'
-    # inter_terr = inter_terr[cost_table.columns]
+    # total interet terrain
+    inter_terr = financials_result[['sector', 'batiment', '71']].groupby(['sector', 'batiment']).sum().reset_index()
+    inter_terr = inter_terr.rename(columns={'71': 'total interet terrain'})
+    summary = pd.merge(summary, inter_terr, on=['sector', 'batiment'])
+
+    # total revenu
+    rev = financials_result[['sector', 'batiment', '58', '59']]
+    rev.loc[:, 'x'] = financials_result[['58', '59']].sum(axis=1)
+    rev = rev[['sector', 'batiment', 'x']].groupby(['sector', 'batiment']).sum().reset_index()
+    rev = rev.rename(columns={'x': 'revenus totaux'})
+    summary = pd.merge(summary, rev, on=['sector', 'batiment'])
+
     # # financials_result.to_excel('test.xlsx')
     #
     # # total interet projet
@@ -822,8 +828,18 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
     tri = np.round(100 * ((1 + tri/100)**12 - 1), 2)
     tri = tri.reset_index().rename(columns={0: 'TRI'})
     summary = pd.merge(summary, tri, on=['sector', 'batiment'])
-    # summary.to_excel('test.xlsx')
+
+    # Cout du projet
+    summary.loc[:, 'cout du projet'] = summary[["cout total du projet", 'total interet terrain']].sum(axis=1)
+
+    # marge beneficiare
+    summary.loc[:, 'marge beneficiaire'] = 100 * (summary['revenus totaux'] / summary["cout du projet"] - 1)
+
+    inter_terr = financials_result[['sector', 'batiment', '58']].groupby(['sector', 'batiment']).sum().reset_index()
+    # inter_terr = inter_terr.rename(columns={'58': 'total interet terrain'})
+    summary = pd.merge(summary, inter_terr, on=['sector', 'batiment'])
     # print(summary)
+    summary.to_excel('test.xlsx')
     return
     tri = tri.to_frame().transpose()
     tri['category'] = 'total'
@@ -844,9 +860,10 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
 
     return summary
 
-def calculate_financial(type, secteur, batiment, params, timeline, finance_params, *args):
+def calculate_financial(type, secteur, batiment, params, timeline, cost, finance_params, *args):
 
-    cost_table = calculate_cost(type, secteur, batiment, params, *args)
+    cost_table = calculate_cost(type, secteur, batiment, params, cost, *args)
+    print(cost_table)
     return calcul_detail_financier(secteur, batiment, timeline, cost_table, finance_params)
 
 
@@ -858,14 +875,14 @@ if __name__ == '__main__':
     x = get_all_informations(myBook)
     cost_params = x[(x['type'].isin(['pcost'])) & (x['sector'] == 'Secteur 1')]
 
-    # args = dict()
+    args = dict()
     # supter = [50000]
     # densite = [10]
-    # finance_params = x[(x['type'].isin(['financial'])) & (x['sector'] == 'Secteur 1')]
+    finance_params = x[(x['type'].isin(['financial'])) & (x['sector'] == 'Secteur 1')]
     #
     # # tab = []
     # print(__BATIMENT__[5:6])
-    # result = calculate_financial('CA3', __SECTEUR__, __BATIMENT__, x, 120, finance_params, args)
+    result = calculate_financial('CA3', __SECTEUR__, __BATIMENT__, x, 120, cost_params, finance_params, args)
     # r = result.loc[result[result['value'] == 'marge beneficiaire'].index[0], __BATIMENT__]
     # best_batiment = r.astype(float).idxmax(skipna=True)
     # result = result[result['value'].isin(['ntu', 'TRI', 'marge beneficiaire'])]
@@ -906,35 +923,35 @@ if __name__ == '__main__':
 
         return pd.concat([data, params[data.columns]], ignore_index=True)
 
-
-
-
-    couleur_secteur = {}
-    couleur = ['Jaune', 'Vert', 'Bleu pâle', 'Bleu', 'Mauve', 'Rouge', 'Noir']
-
-    for pos in range(len( __SECTEUR__)):
-        couleur_secteur[couleur[pos]] = __SECTEUR__[pos]
-
-    terrain_dev = pd.read_excel(__FILES_NAME__, sheet_name='terrains')
-
-    header_dict = {'SuperficieTerrain_Pi2': 'sup_ter', 'COS max formule': 'denm_p', 'couleur': 'sector',
-                   'Valeur terrain p2 PROVISOIRE': 'vat'}
-    terrain_dev.rename(columns = header_dict, inplace=True)
-
-    terrain_dev = terrain_dev[['ID', 'sup_ter', 'denm_p', 'sector', 'vat']]
-    # terrain_dev = terrain_dev[terrain_dev['sup_ter'] >= 1000]
-
-    terrain_dev.loc[:, 'sector'] = terrain_dev['sector'].replace(couleur_secteur)
-
-    start = time.time()
-    terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat']).reset_index(drop=True).tail(250)
-    cb3 = terr.groupby('ID').apply(get_summary_value).reset_index(drop=True)
-    ca3 = get_ca_characteristic(cb3['sector'].unique(), __BATIMENT__, cb3)
-
-    # Add cost intrants.
-    cost = calcul_cout_batiment(cb3['sector'].unique(), __BATIMENT__, ca3, cost_params)
-    end = time.time()
-
-    print(end - start)
+    #
+    #
+    #
+    # couleur_secteur = {}
+    # couleur = ['Jaune', 'Vert', 'Bleu pâle', 'Bleu', 'Mauve', 'Rouge', 'Noir']
+    #
+    # for pos in range(len( __SECTEUR__)):
+    #     couleur_secteur[couleur[pos]] = __SECTEUR__[pos]
+    #
+    # terrain_dev = pd.read_excel(__FILES_NAME__, sheet_name='terrains')
+    #
+    # header_dict = {'SuperficieTerrain_Pi2': 'sup_ter', 'COS max formule': 'denm_p', 'couleur': 'sector',
+    #                'Valeur terrain p2 PROVISOIRE': 'vat'}
+    # terrain_dev.rename(columns = header_dict, inplace=True)
+    #
+    # terrain_dev = terrain_dev[['ID', 'sup_ter', 'denm_p', 'sector', 'vat']]
+    # # terrain_dev = terrain_dev[terrain_dev['sup_ter'] >= 1000]
+    #
+    # terrain_dev.loc[:, 'sector'] = terrain_dev['sector'].replace(couleur_secteur)
+    #
+    # start = time.time()
+    # terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat']).reset_index(drop=True).tail(250)
+    # cb3 = terr.groupby('ID').apply(get_summary_value).reset_index(drop=True)
+    # ca3 = get_ca_characteristic(cb3['sector'].unique(), __BATIMENT__, cb3)
+    #
+    # # Add cost intrants.
+    # cost = calcul_cout_batiment(cb3['sector'].unique(), __BATIMENT__, ca3, cost_params)
+    # end = time.time()
+    #
+    # print(end - start)
 
 
