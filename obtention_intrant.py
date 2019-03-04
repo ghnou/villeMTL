@@ -823,13 +823,12 @@ def get_ca_characteristic(secteur, batiment, table_of_intrant):
                              (table_of_intrant['category'] == 'ALL')]
 
     result = value[['value'] + batiment].groupby(value['sector']).apply(go_no_go, batiment)
-    print(result)
 
     result.loc[:, 'type'] = 'go_no_go'
     result.loc[:,'category'] = 'ALL'
     result.loc[:,'sector'] = secteur
     result.loc[:,'value'] = 'go_no_go'
-
+    result = result[entete]
     table_of_intrant = pd.concat([table_of_intrant, result],ignore_index=True)
 
 
@@ -838,7 +837,6 @@ def get_ca_characteristic(secteur, batiment, table_of_intrant):
     ntu = table_of_intrant[mask][['sector'] + batiment]
     ntu.loc[:, batiment] = ntu.where(ntu[batiment] > 0, np.nan)
     table_of_intrant = table_of_intrant.groupby('sector').apply(validate_batiment, ntu).reset_index(drop=True)
-    print(table_of_intrant.tail(10))
 
     return table_of_intrant
 
@@ -2157,7 +2155,7 @@ if __name__ == '__main__':
     args['sup_ter'] = [[159]]
     args['denm_p'] = [[5]]
     args['vat'] = [[64]]
-    t = get_summary_characteristics('CA3', __SECTEUR__[1:2], __BATIMENT__, x, args)
+    t = get_summary_characteristics('CA3', __SECTEUR__, __BATIMENT__, x, args)
     # for ter in supter:
     #     for dens in densite:
     #         args = dict()

@@ -140,23 +140,28 @@ if __name__ == '__main__':
     finance_params = x[(x['type'].isin(['financial'])) & (x['sector'] == 'Secteur 1')]
 
     terrain_dev = get_land_informations()
-    terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']).reset_index(drop=True)
+    terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']).reset_index(drop=True).tail(20)
     intervall = np.array_split(terr.index, 16)
     params = ()
 
-    for value in intervall:
-
-        params += data_for_simulation(data=terr.loc[value, :],
+    params = data_for_simulation(data=terr,
                                      cost_params=cost_params,
-                                     financials_params=finance_params),
+                                     financials_params=finance_params)
+    get_summary(params)
 
-    pool = multiprocessing.Pool(16)
-    result = pool.map(get_summary, params)
-    pool.close()
-    pool.join()
-
-    end = time.time()
-
-    print(end - start)
+    # for value in intervall:
+    #
+    #     params += data_for_simulation(data=terr.loc[value, :],
+    #                                  cost_params=cost_params,
+    #                                  financials_params=finance_params),
+    #
+    # pool = multiprocessing.Pool(16)
+    # result = pool.map(get_summary, params)
+    # pool.close()
+    # pool.join()
+    #
+    # end = time.time()
+    #
+    # print(end - start)
 
 
