@@ -676,6 +676,7 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
     result = result.apply(calcul_ecoulement_et_vente, params)
     result = result.reset_index(drop=True)
     financials_result = pd.concat([financials_result, result], axis=1)
+    financials_result.to_excel('t.xlsx')
 
     # 50% des unites construites
     data = finance_params[finance_params['value'] == 'nv_min_prev_av_deb']

@@ -81,7 +81,6 @@ def get_financials_results(z, *params):
 
 def function_to_optimize(z, *params):
 
-
     value = params[4]
 
     r = get_financials_results(z, *params)
@@ -91,16 +90,17 @@ def function_to_optimize(z, *params):
     print('')
     return np.abs(value-r)
 
-def n(params):
 
+def n(params):
     x, y, z, k = params
     if x*y*z*k == 200:
 
-        value =  x + y + z + k
+        value = x + y + z + k
     else:
         value =  1000
 
     return value
+
 
 def get_land_informations():
 
@@ -129,6 +129,7 @@ def get_land_informations():
 def get_summary(params):
 
     print('Start Process: ', os.getpid())
+
     def get_summary_value(group):
 
         data = group.copy()
@@ -179,38 +180,84 @@ def get_summary(params):
 
 def get_statistics(terrain_dev):
 
+    terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']).reset_index(drop=True)
     data = np.load('resultat simulation.npy').item()
     header = data['header']
     data = data['data']
     data = pd.DataFrame(data, columns=header)
-    print(terrain_dev.shape)
+
+    go = data.groupby('sector')['batiment'].count().reset_index()
+    go.rename(columns={'batiment': 'go', 'sector': 'ID'}, inplace=True)
+    go['ID'] = go['ID'].astype(int)
+    terr = pd.merge(terr, go, 'left', on=['ID'])
 
     def best_building(data):
-
         group = data.copy()
-        id_  = group['marge beneficiaire'].fillna(-1000).idxmax()
+        id_ = group['marge beneficiaire'].fillna(-1000).idxmax()
         group = group.loc[id_, :].to_frame().transpose()
-        group = group[group['marge beneficiaire'].astype(int) >=  15]
+        group = group[['batiment', 'Nombre unites', 'marge beneficiaire', 'TRI'] + __UNITE_TYPE__]
 
         return group
 
-    data.set_index('sector').to_excel('t.xlsx')
+    def second_building(data):
+        group = data.copy()
 
-    data = data.groupby('sector').apply(best_building).reset_index(drop=True)
-    data.rename(columns={'sector' : 'ID'}, inplace=True)
-    data['ID'] = data['ID'].astype(int)
+        id_ = group['marge beneficiaire'].fillna(-1000).idxmax()
+        group = group[group.index != id_]
 
-    terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']).reset_index(drop=True)
+        count = group['batiment'].count()
+        header = pd.MultiIndex.from_product([['Second Choix'],
+                                             group.columns])
+        if count > 0:
+            id_ = group['marge beneficiaire'].fillna(-1000).idxmax()
+            group = group.loc[id_, :].to_frame().transpose()
+            group = group[['batiment', 'Nombre unites', 'marge beneficiaire', 'TRI']]
 
-    terr= pd.merge(terr, data, on=['ID'])
+        else:
+            group = group[['batiment', 'Nombre unites', 'marge beneficiaire', 'TRI']]
 
-    terrain_dev = pd.merge(terrain_dev, terr, on=['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne'])
+        return group
 
-    print(terrain_dev.columns)
+    best_batiment = data.groupby('sector').apply(best_building).reset_index(level=1, drop=True).reset_index()
+    best_batiment.rename(columns={'sector': 'ID'}, inplace=True)
+    best_batiment['ID'] = best_batiment['ID'].astype(int)
+    terr = pd.merge(terr, best_batiment, 'left', on=['ID'])
 
-    terrain_dev.groupby(['sector', 'batiment'])[['Nombre unites'] + __UNITE_TYPE__].sum().to_excel('test.xlsx')
+    second_batiment = data.groupby('sector').apply(second_building).reset_index(level=1, drop=True).reset_index()
+    second_batiment.rename(columns={'sector': 'ID'}, inplace=True)
+    second_batiment['ID'] = second_batiment['ID'].astype(int)
+    terr = pd.merge(terr, second_batiment, 'left', on=['ID'])
 
-    # terrain_dev[terrain_dev['sector'] == 'Secteur 1'].to_excel('t.xlsx')
+    terrain_dev = pd.merge(terrain_dev, terr, 'left', on=['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne'])
+    terrain_dev['go'] = terrain_dev['go'].fillna(0)
+    header = ['ID_x', 'sector', 'sup_ter', 'vat', 'denm_p', 'max_ne', 'min_ne', 'go', 'batiment_x', 'Nombre unites_x',
+              'marge beneficiaire_x', 'TRI_x', 'batiment_y', 'Nombre unites_y', 'marge beneficiaire_y', 'TRI_y']
+
+    # terrain_dev[header].to_excel('land result.xlsx')
+    header = ['ID_x', 'sector', 'sup_ter', 'vat', 'denm_p', 'max_ne', 'min_ne', 'go', 'batiment_x', 'Nombre unites_x',
+              'marge beneficiaire_x', 'TRI_x']
+
+    terrain_dev['marge beneficiaire_x'] = terrain_dev['marge beneficiaire_x'].fillna(0)
+    terrain_dev = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']).reset_index(drop=True)
+    x = terrain_dev[header].sort_values(['marge beneficiaire_x', 'sup_ter'])
+
+    pd.concat([x.head(50), x.tail(50)], ignore_index=True).to_excel('tail.xlsx')
+
+    # terrain_dev = terrain_dev[['sector', 'batiment_x', 'marge beneficiaire_x', 'Nombre unites_x'] + __UNITE_TYPE__]
+    #
+    # # terrain_dev.groupby(['sector', 'batiment_x'])[['Nombre unites_x'] + __UNITE_TYPE__].sum().to_excel('t.xlsx')
+    # terrain_dev['marge'] = pd.cut(terrain_dev['marge beneficiaire_x'],
+    #                               [terrain_dev['marge beneficiaire_x'].min(), 10, 11, 12, 13, 14, 15, terrain_dev['marge beneficiaire_x'].max()]).values.add_categories('0').fillna(
+    #     '0')
+
+    def get_sum(group):
+        data = group.copy()
+        data = data.groupby(['marge']).sum().reset_index()
+        return data.set_index('marge').transpose()
+    # terrain_dev = terrain_dev[terrain_dev['marge'] != '0']
+    # terrain_dev.groupby(['sector', 'batiment_x'])[['Nombre unites_x', 'marge']].apply(get_sum).to_excel('t.xlsx')
+    # print(terrain_dev.shape)
+
 
 if __name__ == '__main__':
 
@@ -221,7 +268,7 @@ if __name__ == '__main__':
     # cost_params = x[(x['type'].isin(['pcost'])) & (x['sector'] == 'Secteur 1')]
     # finance_params = x[(x['type'].isin(['financial'])) & (x['sector'] == 'Secteur 1')]
     #
-    terrain_dev = get_land_informations()
+    # terrain_dev = get_land_informations()
     # terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']).reset_index(drop=True)
     # print(terr[['vat']].describe())
     # # print(terr.loc[terr['vat'].idxmax()])
@@ -248,7 +295,7 @@ if __name__ == '__main__':
     # di['header'] = result.columns
     # di['data'] = result
     # np.save('resultat simulation', di)
-
+    terrain_dev = get_land_informations()
     get_statistics(terrain_dev)
 
     end = time.time()
