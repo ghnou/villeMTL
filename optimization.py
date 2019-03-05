@@ -24,39 +24,41 @@ data_for_simulation = collections.namedtuple('data_for_simulation',[
 from lexique import __FILES_NAME__, __SECTEUR__, __BATIMENT__, __UNITE_TYPE__
 
 
-def prix_terrain(secteur, sup, dens):
+def prix_terrain(secteur, dens):
+
 
     if secteur == __SECTEUR__[0]:
         return 35 if dens < 1 else 43
+
     elif secteur == __SECTEUR__[1]:
         if dens < 1.4:
             return 48
         elif dens>= 1.4 and dens < 3.5:
-            return (dens + 8.7) / 0.2087
+            return 7.4939* dens + 32.387
         elif dens>= 3.5 and dens < 10:
-            return math.exp((dens + 16.025) / 4.7758)
+            return 26.483 * dens - 29.979
         else:
             return None
     elif secteur == __SECTEUR__[2]:
-        return math.exp((dens + 27.118) / 6.3547)
+        return 0.3544 * dens ** 3 - 2.9431 * dens ** 2 + 22.754 * dens + 63.88
 
     elif secteur == __SECTEUR__[3]:
-        return math.exp((dens + 32.221) / 7.0326)
+        return 3.3413 * dens ** 2  - 2.8718 * dens + 118.96
 
     elif secteur == __SECTEUR__[4]:
-        return math.exp((dens + 31.575) / 6.7933)
+        return 4.7471 * dens ** 2   - 16.738 * dens + 167.29
 
     elif secteur == __SECTEUR__[5]:
         if dens < 2:
             return 193
         else:
-            return math.exp((dens + 34.101) / 7.0505)
+            return 0.4548 * dens ** 3 - 1.8238 * dens ** 2  + 1.418 * dens + 201.32
 
     elif secteur == __SECTEUR__[6] :
         if dens < 2:
             return 285
         else:
-            return (dens + 1.3071) / 0.018
+            return 55.546 * dens + 73.131
 
 
 def get_financials_results(z, *params):
@@ -80,7 +82,6 @@ def get_financials_results(z, *params):
 
 
 def function_to_optimize(z, *params):
-
     value = params[4]
 
     r = get_financials_results(z, *params)
@@ -118,7 +119,7 @@ def get_land_informations():
     terrain_dev.rename(columns = header_dict, inplace=True)
     terrain_dev.loc[:, 'sector'] = terrain_dev['sector'].replace(couleur_secteur)
 
-    terrain_dev['vat'] = terrain_dev[['sector', 'sup_ter', 'denm_p']].apply(lambda row: prix_terrain(*row[['sector', 'sup_ter', 'denm_p']]), axis = 1)
+    terrain_dev['vat'] = terrain_dev[['sector', 'sup_ter', 'denm_p']].apply(lambda row: prix_terrain(*row[['sector', 'denm_p']]), axis = 1)
 
     terrain_dev = terrain_dev[['ID', 'sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']]
 
@@ -159,8 +160,6 @@ def get_summary(params):
     financials_params = params.financials_params
 
     cb3 = data.groupby('ID').apply(get_summary_value).reset_index(drop=True)
-    # args = dict()
-    # cb3 = get_cb3_characteristic(__SECTEUR__, __BATIMENT__, x, args)
 
     ca3 = get_ca_characteristic(cb3['sector'].unique(), __BATIMENT__, cb3)
     print('Intrants completed for process: ', os.getpid())
@@ -199,6 +198,7 @@ def get_statistics(terrain_dev):
 
         return group
 
+
     def second_building(data):
         group = data.copy()
 
@@ -228,35 +228,37 @@ def get_statistics(terrain_dev):
     second_batiment['ID'] = second_batiment['ID'].astype(int)
     terr = pd.merge(terr, second_batiment, 'left', on=['ID'])
 
-    terrain_dev = pd.merge(terrain_dev, terr, 'left', on=['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne'])
+    terrain_dev = pd.merge(terrain_dev, terr, on=['ID', 'sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne'])
     terrain_dev['go'] = terrain_dev['go'].fillna(0)
-    header = ['ID_x', 'sector', 'sup_ter', 'vat', 'denm_p', 'max_ne', 'min_ne', 'go', 'batiment_x', 'Nombre unites_x',
+    header = ['ID', 'sector', 'sup_ter', 'vat', 'denm_p', 'max_ne', 'min_ne', 'go', 'batiment_x', 'Nombre unites_x',
               'marge beneficiaire_x', 'TRI_x', 'batiment_y', 'Nombre unites_y', 'marge beneficiaire_y', 'TRI_y']
 
-    # terrain_dev[header].to_excel('land result.xlsx')
-    header = ['ID_x', 'sector', 'sup_ter', 'vat', 'denm_p', 'max_ne', 'min_ne', 'go', 'batiment_x', 'Nombre unites_x',
+
+
+    terrain_dev[header].to_excel('land result.xlsx')
+
+    header = ['ID', 'sector', 'sup_ter', 'vat', 'denm_p', 'max_ne', 'min_ne', 'go', 'batiment_x', 'Nombre unites_x',
               'marge beneficiaire_x', 'TRI_x']
 
-    terrain_dev['marge beneficiaire_x'] = terrain_dev['marge beneficiaire_x'].fillna(0)
-    terrain_dev = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']).reset_index(drop=True)
+    terrain_dev = terrain_dev.fillna(0).drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']).reset_index(drop=True)
     x = terrain_dev[header].sort_values(['marge beneficiaire_x', 'sup_ter'])
 
     pd.concat([x.head(50), x.tail(50)], ignore_index=True).to_excel('tail.xlsx')
 
-    # terrain_dev = terrain_dev[['sector', 'batiment_x', 'marge beneficiaire_x', 'Nombre unites_x'] + __UNITE_TYPE__]
-    #
-    # # terrain_dev.groupby(['sector', 'batiment_x'])[['Nombre unites_x'] + __UNITE_TYPE__].sum().to_excel('t.xlsx')
-    # terrain_dev['marge'] = pd.cut(terrain_dev['marge beneficiaire_x'],
-    #                               [terrain_dev['marge beneficiaire_x'].min(), 10, 11, 12, 13, 14, 15, terrain_dev['marge beneficiaire_x'].max()]).values.add_categories('0').fillna(
-    #     '0')
+    terrain_dev = terrain_dev[['sector', 'batiment_x', 'marge beneficiaire_x', 'Nombre unites_x'] + __UNITE_TYPE__]
+
+    # terrain_dev.groupby(['sector', 'batiment_x'])[['Nombre unites_x'] + __UNITE_TYPE__].sum().to_excel('t.xlsx')
+    terrain_dev['marge'] = pd.cut(terrain_dev['marge beneficiaire_x'],
+                                  [terrain_dev['marge beneficiaire_x'].min(), 10, 11, 12, 13, 14, 15, terrain_dev['marge beneficiaire_x'].max()]).values.add_categories('0').fillna(
+        '0')
 
     def get_sum(group):
         data = group.copy()
         data = data.groupby(['marge']).sum().reset_index()
         return data.set_index('marge').transpose()
-    # terrain_dev = terrain_dev[terrain_dev['marge'] != '0']
-    # terrain_dev.groupby(['sector', 'batiment_x'])[['Nombre unites_x', 'marge']].apply(get_sum).to_excel('t.xlsx')
-    # print(terrain_dev.shape)
+    terrain_dev = terrain_dev[terrain_dev['marge'] != '0']
+    terrain_dev.groupby(['sector', 'batiment_x'])[['Nombre unites_x', 'marge']].apply(get_sum).to_excel('t.xlsx')
+    print(terrain_dev.shape)
 
 
 if __name__ == '__main__':
@@ -270,8 +272,8 @@ if __name__ == '__main__':
     #
     # terrain_dev = get_land_informations()
     # terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']).reset_index(drop=True)
-    # print(terr[['vat']].describe())
-    # # print(terr.loc[terr['vat'].idxmax()])
+    # print(terr['vat'].describe())
+    # print(terr.describe())
     # intervall = np.array_split(terr.index, 16)
     # params = ()
     # # # params = data_for_simulation(data=terr,
