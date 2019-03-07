@@ -314,12 +314,32 @@ def get_statistics(terrain_dev):
     distrib_caract_ = x[x['marge beneficiaire_x'].astype(float) > 15][['sup_ter', 'Nombre unites_x', 'marge beneficiaire_x']].astype(float).describe().reset_index()
     distrib_caract_['Description'] = 'Distribution des caracterisques pour tous les terrains de marge beneficiare > 15%.'
 
+    distrib_caract_1 = x[x['marge beneficiaire_x'].astype(float) > 18][['sup_ter', 'Nombre unites_x', 'marge beneficiaire_x']].astype(float).describe().reset_index()
+    distrib_caract_1['Description'] = 'Distribution des caracterisques pour tous les terrains de marge beneficiare > 18%.'
+
+    distrib_caract_2 = x[x['marge beneficiaire_x'].astype(float) > 20][['sup_ter', 'Nombre unites_x', 'marge beneficiaire_x']].astype(float).describe().reset_index()
+    distrib_caract_2['Description'] = 'Distribution des caracterisques pour tous les terrains de marge beneficiare > 20%.'
+
     x = x.sort_values(['marge beneficiaire_x', 'sup_ter'])
     pd.concat([x.head(50), x.tail(50)], ignore_index=True).to_excel('tail.xlsx')
 
-    distrib_caract = pd.concat([distrib_caract, distrib_caract_], ignore_index=True)
+    distrib_caract = pd.concat([distrib_caract, distrib_caract_, distrib_caract_1, distrib_caract_2], ignore_index=True)
     distrib_caract.rename(columns={'index': 'Value'}, inplace=True)
     distrib_caract.set_index(['Description', 'Value'], inplace=True)
+
+    t = x[x['marge beneficiaire_x'].astype(float) > 15].groupby('sector')[['sup_ter']].describe().reset_index()
+    t['Description'] = 'Nombre total de terrain pour MB > 15%'
+
+    t_1 = x[x['marge beneficiaire_x'].astype(float) > 18].groupby('sector')[['sup_ter']].describe().reset_index()
+    t_1['Description'] = 'Nombre total de terrain pour MB > 18%'
+
+    t_2 = x[x['marge beneficiaire_x'].astype(float) > 20].groupby('sector')[['sup_ter']].describe().reset_index()
+    t_2['Description'] = 'Nombre total de terrain pour MB > 20%'
+
+    t = pd.concat([t, t_1, t_2], ignore_index=True)
+    t.set_index(['Description', 'sector'], inplace=True)
+
+
 
      #################################################################################################################
     #
@@ -360,6 +380,7 @@ def get_statistics(terrain_dev):
         distrib_caract.to_excel(writer, sheet_name='Distribution des carac')
         bkdu.to_excel(writer, sheet_name='breakdown by units type')
         gupm.to_excel(writer, sheet_name='Total units per return range')
+        t.to_excel(writer, sheet_name='Stratified')
 
 if __name__ == '__main__':
 

@@ -153,6 +153,7 @@ def calcul_ecoulement_et_vente(data, nombre_total_unite):
     start_pos = 0
 
     def fonction_ecoulement(timeline, studio, cc_1, cc_2, cc_3, penth, cc_2_fam, cc_3_fam):
+
         global start_pos, ecob3mo, ecoa3mo, residu
 
         if timeline == 1:
@@ -173,6 +174,7 @@ def calcul_ecoulement_et_vente(data, nombre_total_unite):
             return pd.Series(np.array([0, 0, 0, 0, 0, 0, 0]))
 
     di = dict()
+
     for x in __UNITE_TYPE__:
         di[x] = 0
     group = group.assign(**di)
