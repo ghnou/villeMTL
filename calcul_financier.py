@@ -11,6 +11,13 @@ from obtention_intrant import get_all_informations, get_intrants, get_cb3_charac
 
 __author__ = 'pougomg'
 
+
+#######################################################################################################################
+#
+# Importants functions
+#
+#######################################################################################################################
+
 def format_for_output(data):
 
     sector = data.name
@@ -22,6 +29,7 @@ def format_for_output(data):
     group['sector'] = sector
 
     return group
+
 
 def debut_des_ventes(data, dm_1, dm_prev, parc_fee):
 
@@ -356,6 +364,7 @@ def pret_projet(data, d):
 
     # print(group[['x', 'rate']].head(50))
 
+
 def depot_prevente(data, d):
 
     group = data.copy()
@@ -575,6 +584,7 @@ def projet_interest(data, d):
 
     return group[['23', '24', '25', '31', '32', '33', '34', '35']]
 
+
 def remb_terr(data):
 
     group = data.copy()
@@ -585,6 +595,7 @@ def remb_terr(data):
     group.loc[group['7'].cumsum() == 1, '15'] = -1 * group['28']
 
     return group[['15']]
+
 
 def remb_proj(data):
 
@@ -623,9 +634,13 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
     :param
     cost_table (pd.DataFrame):  The table containing all the building useful information necessary to compute the financials.
 
-    secteur (str): sector of the building
+    secteur (list): sector of the building
 
     batiment (range): range containing the building we want to compute the costs. eg: ['B1', 'B7']
+    
+    timeline: duration max of the project
+    
+    finance_params: financials intrants
 
     :return
 
@@ -796,8 +811,6 @@ def calculate_financial(type, secteur, batiment, params, timeline, cost, finance
     cost_table = calculate_cost(type, secteur, batiment, params, cost, *args)
     print(cost_table)
     return calcul_detail_financier(secteur, batiment, timeline, cost_table, finance_params)
-
-
 
 
 if __name__ == '__main__':

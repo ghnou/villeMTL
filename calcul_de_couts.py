@@ -51,50 +51,22 @@ def apply_mutation_function(x) -> float:
         return x * 0.005
 
 
-def calcul_cout_batiment(secteur, batiment, table_of_intrant, cost_params) -> pd.DataFrame:
+def calcul_cout_batiment(secteur: list, batiment: list, table_of_intrant: pd.DataFrame, cost_params: pd.DataFrame) -> pd.DataFrame:
 
-    """""
-    This function is used to compute the cost of a builiding given a specific sector.
-
-    :param
-    table_of_intrant (pd.DataFrame):  The table containing all the building useful information necessary to compute the costs.
-
-    cost_param (pd.DataFrame): A dataframe containing all the cost units params.
-
-    secteur (str): sector of the building
-
-    batiment (range): range containing the building we want to compute the costs. eg: ['B1', 'B7']
-    
-    sup_tot_hs
-    sup_ss
-    suptu
-    ntu
-    supbtu
-    cir
-    pisc
-    cub
-    sup_com
-    decont
-    sup_parc
-    cont_soc
-    vat
-    sup_ter
-    price
-    
-
-    :return
-
-    cout_result (pd.Dataframe)
-
-    """""
+    """
+    this function is used to compute the cost of the building given the intrants parameters
+    :param secteur: list of sector
+    :param batiment: list of building
+    :param table_of_intrant: table of CA3, CA4
+    :param cost_params: cost parameters
+    :return: data frame containing the cost of the building and the usefuls informations to compute the finance.
+    """
 
     ##################################################################################################################
     #
     # HARD COST COMPUTATION
     #
     ##################################################################################################################
-
-
 
     # Coquille
     tc = cost_params[cost_params['value'] == 'tcq'].reset_index(drop=True)
@@ -206,7 +178,6 @@ def calcul_cout_batiment(secteur, batiment, table_of_intrant, cost_params) -> pd
     result['type'] = 'cost'
     result = result[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
-
 
 
     # --> Total travaux unite de marche
