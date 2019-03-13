@@ -230,9 +230,16 @@ def get_statistics(terrain_dev):
     def best_building(data):
 
         group = data.copy()
-        id_ = group['marge beneficiaire'].fillna(-1000).idxmax()
+        group['benef'] = group['revenus totaux'] - group['cout du projet']
+        group = group[group['marge beneficiaire'].fillna(-1000) > 12]
+
+        if group.shape[0] == 0:
+            return group[['batiment', 'Nombre unites', 'supbtu', 'sup_bru_one_floor', 'marge beneficiaire', 'TRI'] +
+                         __UNITE_TYPE__]
+        id_ = group['benef'].fillna(-1000).idxmax()
         group = group.loc[id_, :].to_frame().transpose()
-        group = group[['batiment', 'Nombre unites', 'marge beneficiaire', 'TRI'] + __UNITE_TYPE__]
+        group = group[['batiment', 'Nombre unites', 'supbtu', 'sup_bru_one_floor',  'marge beneficiaire', 'TRI'] +
+                      __UNITE_TYPE__]
 
         return group
 
@@ -284,7 +291,7 @@ def get_statistics(terrain_dev):
     #
     ##################################################################################################################
 
-    header = ['ID', 'sector', 'sup_ter', 'vat', 'denm_p', 'max_ne', 'min_ne', 'go', 'batiment_x', 'Nombre unites_x',
+    header = ['ID', 'sector', 'sup_ter', 'vat', 'denm_p', 'max_ne', 'min_ne', 'go', 'batiment_x', 'Nombre unites_x', 'supbtu', 'sup_bru_one_floor',
               'marge beneficiaire_x', 'TRI_x', 'batiment_y', 'Nombre unites_y', 'marge beneficiaire_y', 'TRI_y']
 
     header_val = ['sup_ter', 'vat', 'denm_p', 'max_ne', 'min_ne', 'Nombre unites_x',
@@ -413,7 +420,7 @@ if __name__ == '__main__':
     #                                  cost_params=cost_params,
     #                                  financials_params=finance_params),
     #
-    # pool = multiprocessing.Pool(8)
+    # pool = multiprocessing.Pool(16)
     # result = pool.map(get_summary, params)
     # pool.close()
     # pool.join()

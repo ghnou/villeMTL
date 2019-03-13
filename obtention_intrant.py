@@ -337,6 +337,9 @@ def get_all_informations(workbook) -> pd.DataFrame:
     result = result[entete]
     result['type'] = 'scenarios'
     result.replace({1: REM}, inplace=True)
+
+    # TODO: Scenarios 1 REM Only for sector 7
+    result.loc[result['sector'] != __SECTEUR__[6], __BATIMENT__] = 'Non'
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
 
     # Decontamination

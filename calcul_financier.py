@@ -649,9 +649,11 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
     """""
     summary = pd.DataFrame(None, columns=cost_table.columns)
     ntu = cost_table[(cost_table['value'] == 'ntu')]
+    supbtu = cost_table[(cost_table['value'] == 'supbtu')]
+    sup_bru_one_floor = cost_table[(cost_table['value'] == 'sup_bru_one_floor')]
     cost = cost_table[(cost_table['category'] == 'partial')]
     cost_total = cost_table[(cost_table['category'] == 'total')]
-    summary = pd.concat([summary, ntu, cost, cost_total])
+    summary = pd.concat([summary, ntu, supbtu, sup_bru_one_floor, cost, cost_total])
     summary = summary.groupby(['sector']).apply(format_for_output).reset_index(drop=True)
 
     c = cost_table[(cost_table['value'] == 'ntu') & (cost_table['category'] == 'ALL')]
