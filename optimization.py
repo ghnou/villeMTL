@@ -5,17 +5,14 @@ from calcul_de_couts import calcul_cout_batiment
 from calcul_financier import calcul_detail_financier
 from obtention_intrant import get_all_informations, get_summary_characteristics, get_ca_characteristic, \
     get_cb3_characteristic
-from scipy import optimize
 import pandas as pd
 import numpy as np
 import xlrd
 import collections
-import multiprocessing
-import math
 import os
 import time
 
-data_for_simulation = collections.namedtuple('data_for_simulation',[
+data_for_simulation = collections.namedtuple('data_for_simulation', [
     'data',
     'cost_params',
     'financials_params',])
@@ -197,7 +194,7 @@ def get_statistics(terrain_dev):
     data = pd.DataFrame(data, columns=header)
 
     # Uncomment this for the filters
-    # data = data[(data['Nombre unites'] < 300) & (data['Nombre unites'] > 50)]
+    # data = data[(data['Nombre unites'] <= 300) & (data['Nombre unites'] >50)]
 
     go = data.groupby('sector')['batiment'].count().reset_index()
     go.rename(columns={'batiment': 'go', 'sector': 'ID'}, inplace=True)
@@ -329,12 +326,19 @@ def get_statistics(terrain_dev):
     distrib_caract_2 = x[x['marge beneficiaire_x'].astype(float) > 20][['sup_ter', 'Nombre unites_x', 'marge beneficiaire_x']].astype(float).describe().reset_index()
     distrib_caract_2['Description'] = 'Distribution des caracterisques pour tous les terrains de marge beneficiare > 20%.'
 
+    distrib_caract_3 = x[x['marge beneficiaire_x'].astype(float) > 12][
+        ['sup_ter', 'Nombre unites_x', 'marge beneficiaire_x']].astype(float).describe().reset_index()
+    distrib_caract_3[
+        'Description'] = 'Distribution des caracterisques pour tous les terrains de marge beneficiare > 12%.'
     x = x.sort_values(['marge beneficiaire_x', 'sup_ter'])
     pd.concat([x.head(50), x.tail(50)], ignore_index=True).to_excel('tail.xlsx')
 
-    distrib_caract = pd.concat([distrib_caract, distrib_caract_, distrib_caract_1, distrib_caract_2], ignore_index=True)
+    distrib_caract = pd.concat([distrib_caract,distrib_caract_3, distrib_caract_, distrib_caract_1, distrib_caract_2], ignore_index=True)
     distrib_caract.rename(columns={'index': 'Value'}, inplace=True)
     distrib_caract.set_index(['Description', 'Value'], inplace=True)
+
+    t_ = x[x['marge beneficiaire_x'].astype(float) > 12].groupby('sector')[['sup_ter']].describe().reset_index()
+    t_['Description'] = 'Nombre total de terrain pour MB > 12%'
 
     t = x[x['marge beneficiaire_x'].astype(float) > 15].groupby('sector')[['sup_ter']].describe().reset_index()
     t['Description'] = 'Nombre total de terrain pour MB > 15%'
@@ -345,7 +349,7 @@ def get_statistics(terrain_dev):
     t_2 = x[x['marge beneficiaire_x'].astype(float) > 20].groupby('sector')[['sup_ter']].describe().reset_index()
     t_2['Description'] = 'Nombre total de terrain pour MB > 20%'
 
-    t = pd.concat([t, t_1, t_2], ignore_index=True)
+    t = pd.concat([t_, t, t_1, t_2], ignore_index=True)
     t.set_index(['Description', 'sector'], inplace=True)
 
 
@@ -405,7 +409,8 @@ if __name__ == '__main__':
     # cost_params = x[(x['type'].isin(['pcost'])) & (x['sector'] == 'Secteur 1')]
     # finance_params = x[(x['type'].isin(['financial'])) & (x['sector'] == 'Secteur 1')]
     #
-    # terrain_dev = get_land_informations()
+    terrain_dev = get_land_informations()
+    print(terrain_dev.groupby('sector')['sector'].count())
     # terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']).reset_index(drop=True)
     # print(terr.describe())
     # intervall = np.array_split(terr.index, 16)

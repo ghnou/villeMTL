@@ -774,7 +774,6 @@ def get_ca_characteristic(secteur: list, batiment: list, table_of_intrant: pd.Da
     table_of_intrant = pd.concat([table_of_intrant, x])
 
     # superficie brute unites
-
     supbtu = x[batiment].reset_index() / (1 - cir[batiment].astype(float).reset_index())
     supbtu['category'] = 'ALL'
     supbtu['value'] = 'supbtu'
