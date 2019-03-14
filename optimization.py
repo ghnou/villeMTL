@@ -16,7 +16,8 @@ import multiprocessing
 data_for_simulation = collections.namedtuple('data_for_simulation', [
     'data',
     'cost_params',
-    'financials_params',])
+    'financials_params',
+    'scenario'])
 
 
 from lexique import __FILES_NAME__, __SECTEUR__, __BATIMENT__, __UNITE_TYPE__
@@ -155,10 +156,15 @@ def get_summary(params):
         return result
 
     data = params.data
+    scenario = params.scenario
     cost_params = params.cost_params
     financials_params = params.financials_params
     cb3 = data.groupby('ID').apply(get_summary_value).reset_index(drop=True)
-    ca3 = get_ca_characteristic(cb3['sector'].unique(), __BATIMENT__, cb3)
+
+    if scenario:
+        ca3 = get_ca_characteristic(cb3['sector'].unique(), __BATIMENT__, cb3, data[['ID', 'Batiment']])
+    else:
+        ca3 = get_ca_characteristic(cb3['sector'].unique(), __BATIMENT__, cb3)
     # args=dict()
     # cb3 = get_cb3_characteristic(__SECTEUR__, __BATIMENT__, x, args)
     # ca3 = get_ca_characteristic(cb3['sector'].unique(), __BATIMENT__, cb3)
@@ -426,7 +432,8 @@ if __name__ == '__main__':
     for value in intervall:
         params += data_for_simulation(data=terr.loc[value, :],
                                      cost_params=cost_params,
-                                     financials_params=finance_params),
+                                     financials_params=finance_params,
+                                      scenario=False),
 
     pool = multiprocessing.Pool(8)
     result = pool.map(get_summary, params)

@@ -769,7 +769,7 @@ def get_cb1_characteristic(secteur: list, batiment: list, table_of_intrant: pd.D
     return table_of_intrant
 
 
-def get_ca_characteristic(secteur: list, batiment: list, table_of_intrant: pd.DataFrame) ->pd.DataFrame:
+def get_ca_characteristic(secteur: list, batiment: list, table_of_intrant: pd.DataFrame, *args) ->pd.DataFrame:
 
     """
     This function take a table of CB1, CB3 or CB4 and compute the CA table to round the number of units.

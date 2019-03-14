@@ -533,54 +533,54 @@ def calcul_cout_batiment(secteur: list, batiment: list, table_of_intrant: pd.Dat
     result = su[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result],ignore_index=True)
 
-    price = table_of_intrant[table_of_intrant['value'] == 'price']
-    disct_ab = table_of_intrant[table_of_intrant['value'] == 'disct_ab']
-    prix_ab = price[batiment].reset_index(drop=True) * (1 - disct_ab[batiment].reset_index(drop=True))
-    prix_ab['sector'] = price['sector'].reset_index(drop=True)
-    prix_ab['category'] = price['category'].reset_index(drop=True)
-
-    n_3cc = table_of_intrant[(table_of_intrant['value'] == 'ntu') & (table_of_intrant['category'] == __UNITE_TYPE__[-1])]
-    penth = table_of_intrant[(table_of_intrant['value'] == 'ntu') & (table_of_intrant['category'] == __UNITE_TYPE__[4])]
-
-    prop_ab = table_of_intrant[table_of_intrant['value'] == 'prop_ab']
-    ntu = table_of_intrant[(table_of_intrant['value'] == 'ntu') & (table_of_intrant['category'] == 'ALL')]
-    tot_ab = ntu[batiment].reset_index(drop=True) * prop_ab[batiment].reset_index(drop=True)
-    tot_ab = tot_ab.astype(float).apply(np.ceil)
-    prop_rest = (tot_ab - n_3cc[batiment].reset_index(drop=True))/ \
-                (ntu[batiment].reset_index(drop=True) - penth[batiment].reset_index(drop=True))
-    prop_rest['category'] = __UNITE_TYPE__[0]
-    prop_rest['sector'] = secteur
-    result = prop_rest.copy()
-    for units in __UNITE_TYPE__[1:]:
-        result.loc[:, 'category'] = units
-        result.loc[:, 'sector'] = secteur
-        prop_rest = pd.concat([prop_rest, result], ignore_index=True)
-    prop_rest.loc[prop_rest['category'].isin(__UNITE_TYPE__[3:]), batiment] = 0
-    prop_rest = prop_rest.sort_values(['sector', 'category'])
-    ntu = table_of_intrant[(table_of_intrant['value'] == 'ntu') & (table_of_intrant['category'] != 'ALL')].sort_values(['sector', 'category'])
-    nb_ab = prop_rest[batiment].reset_index(drop=True) * ntu[batiment].reset_index(drop=True)
-    nb_ab = nb_ab.astype(float).apply(np.round)
-    nb_nab = ntu[batiment].reset_index(drop=True) - nb_ab
-    nb_ab['category'] = ntu['category'].reset_index(drop=True)
-    nb_ab['sector'] = ntu['sector'].reset_index(drop=True)
-
-    nb_nab['category'] = ntu['category'].reset_index(drop=True)
-    nb_nab['sector'] = ntu['sector'].reset_index(drop=True)
-
-    price = price.sort_values(['sector', 'category'])
-    prix_ab = prix_ab.sort_values(['sector', 'category'])
-
-    price_new = (price[batiment].reset_index(drop=True) * nb_nab[batiment] + prix_ab[batiment] * nb_ab[batiment])
-    ntu = nb_nab[batiment] + nb_ab[batiment]
-    ntu = ntu.where(ntu != 0, np.nan)
-    price_new = price_new.where(ntu == 0, price_new/ntu).fillna(0)
-    price_new['category'] = price['category'].reset_index(drop=True)
-    price_new['sector'] = price['sector'].reset_index(drop=True)
-
-    price = table_of_intrant[table_of_intrant['value'] == 'price']
-    price = price.sort_values(['sector', 'category'])
-    price.loc[:, batiment] = price_new.sort_values(['sector', 'category'])[batiment].values
-    table_of_intrant.loc[table_of_intrant['value'] == 'price', batiment] = price[batiment]
+    # price = table_of_intrant[table_of_intrant['value'] == 'price']
+    # disct_ab = table_of_intrant[table_of_intrant['value'] == 'disct_ab']
+    # prix_ab = price[batiment].reset_index(drop=True) * (1 - disct_ab[batiment].reset_index(drop=True))
+    # prix_ab['sector'] = price['sector'].reset_index(drop=True)
+    # prix_ab['category'] = price['category'].reset_index(drop=True)
+    #
+    # n_3cc = table_of_intrant[(table_of_intrant['value'] == 'ntu') & (table_of_intrant['category'] == __UNITE_TYPE__[-1])]
+    # penth = table_of_intrant[(table_of_intrant['value'] == 'ntu') & (table_of_intrant['category'] == __UNITE_TYPE__[4])]
+    #
+    # prop_ab = table_of_intrant[table_of_intrant['value'] == 'prop_ab']
+    # ntu = table_of_intrant[(table_of_intrant['value'] == 'ntu') & (table_of_intrant['category'] == 'ALL')]
+    # tot_ab = ntu[batiment].reset_index(drop=True) * prop_ab[batiment].reset_index(drop=True)
+    # tot_ab = tot_ab.astype(float).apply(np.ceil)
+    # prop_rest = (tot_ab - n_3cc[batiment].reset_index(drop=True))/ \
+    #             (ntu[batiment].reset_index(drop=True) - penth[batiment].reset_index(drop=True))
+    # prop_rest['category'] = __UNITE_TYPE__[0]
+    # prop_rest['sector'] = secteur
+    # result = prop_rest.copy()
+    # for units in __UNITE_TYPE__[1:]:
+    #     result.loc[:, 'category'] = units
+    #     result.loc[:, 'sector'] = secteur
+    #     prop_rest = pd.concat([prop_rest, result], ignore_index=True)
+    # prop_rest.loc[prop_rest['category'].isin(__UNITE_TYPE__[3:]), batiment] = 0
+    # prop_rest = prop_rest.sort_values(['sector', 'category'])
+    # ntu = table_of_intrant[(table_of_intrant['value'] == 'ntu') & (table_of_intrant['category'] != 'ALL')].sort_values(['sector', 'category'])
+    # nb_ab = prop_rest[batiment].reset_index(drop=True) * ntu[batiment].reset_index(drop=True)
+    # nb_ab = nb_ab.astype(float).apply(np.round)
+    # nb_nab = ntu[batiment].reset_index(drop=True) - nb_ab
+    # nb_ab['category'] = ntu['category'].reset_index(drop=True)
+    # nb_ab['sector'] = ntu['sector'].reset_index(drop=True)
+    #
+    # nb_nab['category'] = ntu['category'].reset_index(drop=True)
+    # nb_nab['sector'] = ntu['sector'].reset_index(drop=True)
+    #
+    # price = price.sort_values(['sector', 'category'])
+    # prix_ab = prix_ab.sort_values(['sector', 'category'])
+    #
+    # price_new = (price[batiment].reset_index(drop=True) * nb_nab[batiment] + prix_ab[batiment] * nb_ab[batiment])
+    # ntu = nb_nab[batiment] + nb_ab[batiment]
+    # ntu = ntu.where(ntu != 0, np.nan)
+    # price_new = price_new.where(ntu == 0, price_new/ntu).fillna(0)
+    # price_new['category'] = price['category'].reset_index(drop=True)
+    # price_new['sector'] = price['sector'].reset_index(drop=True)
+    #
+    # price = table_of_intrant[table_of_intrant['value'] == 'price']
+    # price = price.sort_values(['sector', 'category'])
+    # price.loc[:, batiment] = price_new.sort_values(['sector', 'category'])[batiment].values
+    # table_of_intrant.loc[table_of_intrant['value'] == 'price', batiment] = price[batiment]
 
     return table_of_intrant
 
