@@ -61,14 +61,23 @@ def debut_des_ventes(data, dm_1, dm_prev, parc_fee):
     rem = parc_fee[(parc_fee['value'] == 'rem') &
                              (parc_fee['sector'] == sector)][[batiment, 'category']].set_index('category').transpose()
 
+    contrib_terr_hs = parc_fee[(parc_fee['value'] == 'contrib_terr_hs') &
+                   (parc_fee['sector'] == sector)][[batiment, 'category']].set_index('category').transpose()
+    contrib_fin = parc_fee[(parc_fee['value'] == 'contrib_fin') &
+                               (parc_fee['sector'] == sector)][[batiment, 'category']].set_index('category').transpose()
+
     rem = rem['unique'].values[0]
     parc = parc['unique'].values[0]
+    contrib_terr_hs = contrib_terr_hs['unique'].values[0]
+    contrib_fin = contrib_fin['unique'].values[0]
 
     group['17'] = 0
     group['18'] = 0
+    group['16'] = 0
     group.loc[:, '17'] = group['17'].where(group['3'].cumsum() != 1, -parc)
     group.loc[:, '18'] = group['18'].where(group['3'].cumsum() != 1, -rem)
-    return group[['3', '4', '5', '17', '18']]
+    group.loc[:, '16'] = group['18'].where(group['3'].cumsum() != 1, -contrib_terr_hs -contrib_fin)
+    return group[['3', '4', '5', '16', '17', '18']]
 
 
 def calculate_vente_ecoulement(t, ecoulement, studios, cc1, cc2, cc3, penth, cc2f, cc3f):
@@ -419,8 +428,6 @@ def sortie_de_fond(data, cost, d):
 
     group['13'] = -1 * (1 - group['10']) * soft_cost/(nb_month - 1)
     group['14'] = -1 * group['8'] * (1 - group['10']) * hard_cost/nb_month_hard
-    # TODO: group['16]
-    group['16'] = 0
     group['23'] = -1 * group[['12', '13', '14', '16', '17', '18', '24']].sum(axis=1)
 
     cout_projet_est = terrain + soft_cost + hard_cost
@@ -434,7 +441,7 @@ def sortie_de_fond(data, cost, d):
     group['19'] = 0
     group.loc[group['9'].cumsum() == 1, '19'] = - terrain * eq_ter
 
-    return group[['7', '9', '12', '13', '14', '16', '19', '23', '24', '33', '34']]
+    return group[['7', '9', '12', '13', '14', '19', '23', '24', '33', '34']]
 
 
 def financement_projet(data, d):
@@ -682,8 +689,8 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
     dm_1 = finance_params[finance_params['value'] == 'dm_1']
     dm_prev = finance_params[finance_params['value'] == 'dm_prev']
     t = financials_result[['sector', 'batiment', '1']].groupby(['sector', 'batiment'])
-    financials_result[['3', '4', '5', '17', '18']] = t.apply(debut_des_ventes, dm_1, dm_prev,
-                                                 cost_table[cost_table['value'].isin(['rem', 'frais_parc'])]).reset_index(drop=True)
+    financials_result[['3', '4', '5', '16', '17', '18']] = t.apply(debut_des_ventes, dm_1, dm_prev,
+                                                 cost_table[cost_table['value'].isin(['rem', 'frais_parc', 'contrib_terr_hs', 'contrib_fin'])]).reset_index(drop=True)
 
     # Ventes (Ecoulement et revenus bruts)
     result = financials_result[['sector', 'batiment', '3', '4']].groupby(['sector', 'batiment'])
@@ -716,10 +723,10 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
     ###################################################################################################################
 
     data = finance_params[finance_params['value'].isin(['eq_terr', 'dur_moy_const'])]
-    cost = cost_table[cost_table['category'] == 'partial']
+    cost = cost_table[(cost_table['category'] == 'partial')]
 
-    tab = financials_result[['sector', 'batiment', '5', '6', '8', '10', '17', '18', '60']].groupby(['sector', 'batiment'])
-    financials_result[['7', '9', '12', '13', '14', '16', '19', '23', '24', '33', '34']] = tab.apply(sortie_de_fond, cost, data).reset_index(drop=True)
+    tab = financials_result[['sector', 'batiment', '5', '6', '8', '10', '16', '17', '18', '60']].groupby(['sector', 'batiment'])
+    financials_result[['7', '9', '12', '13', '14', '19', '23', '24', '33', '34']] = tab.apply(sortie_de_fond, cost, data).reset_index(drop=True)
 
 
     ###################################################################################################################
@@ -811,7 +818,7 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
 def calculate_financial(type, secteur, batiment, params, timeline, cost, finance_params, *args):
 
     cost_table = calculate_cost(type, secteur, batiment, params, cost, *args)
-    print(cost_table)
+    cost_table.to_excel('cost.xlsx')
     return calcul_detail_financier(secteur, batiment, timeline, cost_table, finance_params)
 
 

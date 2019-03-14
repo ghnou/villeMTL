@@ -158,8 +158,10 @@ def get_summary(params):
     cost_params = params.cost_params
     financials_params = params.financials_params
     cb3 = data.groupby('ID').apply(get_summary_value).reset_index(drop=True)
-
     ca3 = get_ca_characteristic(cb3['sector'].unique(), __BATIMENT__, cb3)
+    # args=dict()
+    # cb3 = get_cb3_characteristic(__SECTEUR__, __BATIMENT__, x, args)
+    # ca3 = get_ca_characteristic(cb3['sector'].unique(), __BATIMENT__, cb3)
     print('Intrants completed for process: ', os.getpid())
 
     # Add cost intrants.
@@ -405,40 +407,40 @@ if __name__ == '__main__':
 
     start = time.time()
 
-    # myBook = xlrd.open_workbook(__FILES_NAME__)
-    # x = get_all_informations(myBook)
-    # cost_params = x[(x['type'].isin(['pcost'])) & (x['sector'] == 'Secteur 1')]
-    # finance_params = x[(x['type'].isin(['financial'])) & (x['sector'] == 'Secteur 1')]
-    #
-    # terrain_dev = get_land_informations()
-    # print(terrain_dev.groupby('sector')['sector'].count())
-    # terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']).reset_index(drop=True)
-    # print(terr.describe())
-    # intervall = np.array_split(terr.index, 16)
-    # params = ()
-    # # # params = data_for_simulation(data=terr.head(250),
-    # # #                              cost_params=cost_params,
-    # # #                              financials_params=finance_params)
-    # # # print(get_summary(params))
-    #
-    # for value in intervall:
-    #     params += data_for_simulation(data=terr.loc[value, :],
-    #                                  cost_params=cost_params,
-    #                                  financials_params=finance_params),
-    #
-    # pool = multiprocessing.Pool(16)
-    # result = pool.map(get_summary, params)
-    # pool.close()
-    # pool.join()
-    #
-    # result = pd.concat(result, ignore_index=True)
-    # di = dict()
-    #
-    # di['header'] = result.columns
-    # di['data'] = result
-    # np.save('resultat simulation', di)
+    myBook = xlrd.open_workbook(__FILES_NAME__)
+    x = get_all_informations(myBook)
+    cost_params = x[(x['type'].isin(['pcost'])) & (x['sector'] == 'Secteur 1')]
+    finance_params = x[(x['type'].isin(['financial'])) & (x['sector'] == 'Secteur 1')]
+
     terrain_dev = get_land_informations()
-    get_statistics(terrain_dev)
+    print(terrain_dev.groupby('sector')['sector'].count())
+    terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']).reset_index(drop=True)
+    print(terr.describe())
+    intervall = np.array_split(terr.index, 16)
+    params = ()
+    # params = data_for_simulation(data=terr.head(250),
+    #                              cost_params=cost_params,
+    #                              financials_params=finance_params)
+    # print(get_summary(params))
+    #
+    for value in intervall:
+        params += data_for_simulation(data=terr.loc[value, :],
+                                     cost_params=cost_params,
+                                     financials_params=finance_params),
+
+    pool = multiprocessing.Pool(8)
+    result = pool.map(get_summary, params)
+    pool.close()
+    pool.join()
+
+    result = pd.concat(result, ignore_index=True)
+    di = dict()
+
+    di['header'] = result.columns
+    di['data'] = result
+    np.save('resultat simulation', di)
+    # terrain_dev = get_land_informations()
+    # get_statistics(terrain_dev)
 
     end = time.time()
 

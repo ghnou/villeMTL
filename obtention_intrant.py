@@ -266,47 +266,62 @@ def get_all_informations(workbook) -> pd.DataFrame:
 
     # TODO: Change for number units and sector
     sh = workbook.sheet_by_name(__PROP_SHEET__)
+    case = 1
 
-    # Comment this for 5 to  50 units
-    t = ajouter_caraterisque_par_type_unite(sh, [], 'pptu', [3, 1], False)
-    t = pd.DataFrame(t, columns=entete)
-    for secteur in __SECTEUR__:
-        t.loc[:, 'sector'] = secteur
-        table_of_intrant = pd.concat([table_of_intrant, t])
+    if case == 1:
+        # this for 5 to  50 units
+        t = ajouter_caraterisque_par_type_unite(sh, [], 'pptu', [3, 1], False)
+        t = pd.DataFrame(t, columns=entete)
+        for secteur in __SECTEUR__:
+            t.loc[:, 'sector'] = secteur
+            table_of_intrant = pd.concat([table_of_intrant, t])
 
-    t = ajouter_caraterisque_par_type_unite(sh, [], 'ppts', [12, 1], False)
-    t = pd.DataFrame(t, columns=entete)
-    for secteur in __SECTEUR__:
-        t.loc[:, 'sector'] = secteur
-        table_of_intrant = pd.concat([table_of_intrant, t])
+        t = ajouter_caraterisque_par_type_unite(sh, [], 'ppts', [12, 1], False)
+        t = pd.DataFrame(t, columns=entete)
+        for secteur in __SECTEUR__:
+            t.loc[:, 'sector'] = secteur
+            table_of_intrant = pd.concat([table_of_intrant, t])
+        x = np.zeros((len(__SECTEUR__), len(__BATIMENT__)))
+        x = pd.DataFrame(x, columns=__BATIMENT__)
+        x.loc[:, 'sector'] = __SECTEUR__
+        x.loc[:, 'category'] = 'ALL'
+        x.loc[:, 'value'] = 'prop_ab'
+        table_of_intrant = pd.concat([table_of_intrant, x[table_of_intrant.columns]])
 
-    # For 50 units and more apply this
+    else:
+        # For 50 units and more apply this
+        t = ajouter_caraterisque_par_type_unite(sh, [], 'pptu', [3, 19], False)
+        t = pd.DataFrame(t, columns=entete)
+        for secteur in __SECTEUR__[:-1]:
+            t.loc[:, 'sector'] = secteur
+            table_of_intrant = pd.concat([table_of_intrant, t])
 
-    # t = ajouter_caraterisque_par_type_unite(sh, [], 'pptu', [3, 19], False)
-    # t = pd.DataFrame(t, columns=entete)
-    # for secteur in __SECTEUR__[:-1]:
-    #     t.loc[:, 'sector'] = secteur
-    #     table_of_intrant = pd.concat([table_of_intrant, t])
-    #
-    # t = ajouter_caraterisque_par_type_unite(sh, [], 'ppts', [12, 19], False)
-    # t = pd.DataFrame(t, columns=entete)
-    # for secteur in __SECTEUR__[:-1]:
-    #     t.loc[:, 'sector'] = secteur
-    #     table_of_intrant = pd.concat([table_of_intrant, t])
-    #
-    # t = ajouter_caraterisque_par_type_unite(sh, [], 'pptu', [3, 10], False)
-    # t = pd.DataFrame(t, columns=entete)
-    # for secteur in __SECTEUR__[6:]:
-    #     t.loc[:, 'sector'] = secteur
-    #     table_of_intrant = pd.concat([table_of_intrant, t])
-    #
-    # t = ajouter_caraterisque_par_type_unite(sh, [], 'ppts', [12, 10], False)
-    # t = pd.DataFrame(t, columns=entete)
-    # for secteur in __SECTEUR__[6:]:
-    #     t.loc[:, 'sector'] = secteur
-    #     table_of_intrant = pd.concat([table_of_intrant, t])
+        t = ajouter_caraterisque_par_type_unite(sh, [], 'ppts', [12, 19], False)
+        t = pd.DataFrame(t, columns=entete)
+        for secteur in __SECTEUR__[:-1]:
+            t.loc[:, 'sector'] = secteur
+            table_of_intrant = pd.concat([table_of_intrant, t])
 
+        t = ajouter_caraterisque_par_type_unite(sh, [], 'pptu', [3, 10], False)
+        t = pd.DataFrame(t, columns=entete)
+        for secteur in __SECTEUR__[6:]:
+            t.loc[:, 'sector'] = secteur
+            table_of_intrant = pd.concat([table_of_intrant, t])
 
+        t = ajouter_caraterisque_par_type_unite(sh, [], 'ppts', [12, 10], False)
+        t = pd.DataFrame(t, columns=entete)
+        for secteur in __SECTEUR__[6:]:
+            t.loc[:, 'sector'] = secteur
+            table_of_intrant = pd.concat([table_of_intrant, t])
+
+        x = 0.1 * np.ones((len(__SECTEUR__), len(__BATIMENT__)))
+        x = pd.DataFrame(x, columns=__BATIMENT__)
+        x.loc[:, 'sector'] = __SECTEUR__
+        x.loc[:, 'category'] = 'ALL'
+        x.loc[:, 'value'] = 'prop_ab'
+        x.loc[x['sector'] == __SECTEUR__[6], __BATIMENT__] = 0.075
+        table_of_intrant = pd.concat([table_of_intrant, x[table_of_intrant.columns]])
+    table_of_intrant[table_of_intrant['value'].isin(['pptu', 'ppts'])].to_excel('test.xlsx')
     table_of_intrant['type'] = 'intrants'
 
 
@@ -323,6 +338,19 @@ def get_all_informations(workbook) -> pd.DataFrame:
 
     terr_ss = sh.cell(23, 3).value
     terr_hs = sh.cell(24, 3).value
+    disct_ab = sh.cell(14, 2).value
+
+    x = disct_ab * np.ones((len(__SECTEUR__), len(__BATIMENT__)))
+    x = pd.DataFrame(x, columns=__BATIMENT__)
+    x.loc[:, 'sector'] = __SECTEUR__
+
+    x.loc[:, 'value'] = 'disct_ab'
+    x['type'] = 'scenarios'
+
+    for unit in __UNITE_TYPE__:
+        x.loc[:, 'category'] = unit
+        result = x[table_of_intrant.columns]
+        table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
 
     contrib_terr_ss = np.array([[sh.cell(i, 8).value for batim in __BATIMENT__] for i in range(29, 36)]) * terr_ss
     contrib_terr_hs = np.array([[sh.cell(i, 8).value for batim in __BATIMENT__] for i in range(40, 47)]) * terr_hs
@@ -350,7 +378,7 @@ def get_all_informations(workbook) -> pd.DataFrame:
     contrib_fin['category'] = 'ALL'
     contrib_fin['value'] = 'contrib_fin'
     contrib_fin['sector'] = __SECTEUR__
-    contrib_fin['type']  = 'scenarios'
+    contrib_fin['type'] = 'scenarios'
     result = contrib_fin[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
 
@@ -763,8 +791,8 @@ def get_ca_characteristic(secteur: list, batiment: list, table_of_intrant: pd.Da
                       'min_ne', 'max_ne',
                       'min_ne_ss', 'max_ne_ss', 'cir', 'aec', 'si', 'pi_si', 'ee_ss', 'pi_ee', 'cub', 'sup_cu',
                       'supt_cu', 'pisc', 'sup_pisc', 'pp_sup_escom', 'pp_et_escom', 'ss_sup_CES', 'ss_sup_ter', 'nba',
-                      'min_max_asc', 'tap', 'price', 'cont_soc', 'parc', 'decont', 'rem', 'stat', 'denm_t', 'ces_m',
-                      'contrib_terr_ss', 'contrib_terr_hs', 'contrib_fin']
+                      'min_max_asc', 'tap', 'price', 'parc', 'decont', 'rem', 'stat', 'denm_t', 'ces_m',
+                      'contrib_terr_ss', 'contrib_terr_hs', 'contrib_fin', 'prop_ab', 'disct_ab']
 
     table_of_intrant = table_of_intrant[(table_of_intrant['value'].isin(input_variable)) &
                                         (table_of_intrant['sector'].isin(secteur))][entete]
@@ -961,12 +989,9 @@ def get_ca_characteristic(secteur: list, batiment: list, table_of_intrant: pd.Da
     contrib_fin = contrib_fin[batiment].reset_index(drop=True) * x
     contrib_fin = contrib_fin.where(ntu[batiment] <= 149, 0)
 
-
-    table_of_intrant.loc[table_of_intrant['value'] == 'contrib_terr_ss', batiment] = contrib_terr_ss
-    table_of_intrant.loc[table_of_intrant['value'] == 'contrib_terr_hs', batiment] = contrib_terr_hs
-    table_of_intrant.loc[table_of_intrant['value'] == 'contrib_fin', batiment] = contrib_fin
-
-
+    table_of_intrant.loc[table_of_intrant['value'] == 'contrib_terr_ss', batiment] = contrib_terr_ss.values
+    table_of_intrant.loc[table_of_intrant['value'] == 'contrib_terr_hs', batiment] = contrib_terr_hs.values
+    table_of_intrant.loc[table_of_intrant['value'] == 'contrib_fin', batiment] = contrib_fin.values
 
     # Go No Go
     # --> Floor Hs
@@ -1006,7 +1031,6 @@ def get_ca_characteristic(secteur: list, batiment: list, table_of_intrant: pd.Da
     sup_ces = table_of_intrant[table_of_intrant['value'] == 'ss_sup_CES']
     x = sup_bru_one_floor[batiment].reset_index(drop=True) * sup_ces[batiment].reset_index(drop=True)
     y = sup_ter[batiment].reset_index(drop=True) * sup_ces[batiment].reset_index(drop=True)
-
     x.loc[:, __BATIMENT__[3:]] = y.loc[:, __BATIMENT__[3:]]
     floor_ss = sup_ss[batiment].reset_index(drop=True) / x
     floor_ss = floor_ss.astype(float).apply(np.round, 1)
@@ -1056,8 +1080,8 @@ def get_cb3_characteristic(secteur: list, batiment: list, table_of_intrant: pd.D
     input_variable = ['sup_ter', 'tum', 'vat', 'denm_p', 'ces', 'pptu', 'mp', 'min_nu', 'max_nu',
                       'min_ne', 'max_ne', 'min_ne_ss', 'max_ne_ss', 'cir', 'aec', 'si', 'pi_si', 'ee_ss', 'pi_ee',
                       'cub', 'sup_cu', 'supt_cu', 'pisc', 'sup_pisc', 'pp_sup_escom', 'pp_et_escom', 'ss_sup_CES',
-                      'ss_sup_ter', 'nba', 'min_max_asc', 'tap', 'price', 'cont_soc', 'parc', 'decont', 'rem', 'stat',
-                      'denm_t', 'ces_m', 'contrib_terr_ss', 'contrib_terr_hs', 'contrib_fin']
+                      'ss_sup_ter', 'nba', 'min_max_asc', 'tap', 'price', 'parc', 'decont', 'rem', 'stat',
+                      'denm_t', 'ces_m', 'contrib_terr_ss', 'contrib_terr_hs', 'contrib_fin', 'prop_ab', 'disct_ab']
 
     table_of_intrant = table_of_intrant[(table_of_intrant['value'].isin(input_variable)) &
                                         (table_of_intrant['sector'].isin(secteur))][entete]
