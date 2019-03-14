@@ -11,6 +11,7 @@ import xlrd
 import collections
 import os
 import time
+import multiprocessing
 
 data_for_simulation = collections.namedtuple('data_for_simulation', [
     'data',
@@ -194,7 +195,7 @@ def get_statistics(terrain_dev):
     data = pd.DataFrame(data, columns=header)
 
     # Uncomment this for the filters
-    # data = data[(data['Nombre unites'] <= 300) & (data['Nombre unites'] >50)]
+    data = data[(data['Nombre unites'] <= 50) & (data['Nombre unites'] >0)]
 
     go = data.groupby('sector')['batiment'].count().reset_index()
     go.rename(columns={'batiment': 'go', 'sector': 'ID'}, inplace=True)
@@ -409,16 +410,16 @@ if __name__ == '__main__':
     # cost_params = x[(x['type'].isin(['pcost'])) & (x['sector'] == 'Secteur 1')]
     # finance_params = x[(x['type'].isin(['financial'])) & (x['sector'] == 'Secteur 1')]
     #
-    terrain_dev = get_land_informations()
-    print(terrain_dev.groupby('sector')['sector'].count())
+    # terrain_dev = get_land_informations()
+    # print(terrain_dev.groupby('sector')['sector'].count())
     # terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']).reset_index(drop=True)
     # print(terr.describe())
     # intervall = np.array_split(terr.index, 16)
     # params = ()
-    # # params = data_for_simulation(data=terr.head(250),
-    # #                              cost_params=cost_params,
-    # #                              financials_params=finance_params)
-    # # print(get_summary(params))
+    # # # params = data_for_simulation(data=terr.head(250),
+    # # #                              cost_params=cost_params,
+    # # #                              financials_params=finance_params)
+    # # # print(get_summary(params))
     #
     # for value in intervall:
     #     params += data_for_simulation(data=terr.loc[value, :],
