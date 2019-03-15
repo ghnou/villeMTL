@@ -125,8 +125,9 @@ def validate_batiment(data, ntu):
     return group
 
 
-def go_no_go(group, header):
+def go_no_go(group, header, filter):
 
+    sector = group.name
     data = group.copy()
 
     # min_ne = data[data['value'] == 'min_ne'][header]
@@ -177,6 +178,11 @@ def go_no_go(group, header):
     go =  ces.reset_index(drop=True)
     ntu = data[data['value'] == 'ntu'][header]
     go = go.where(ntu.values > 0, 0)
+
+    if filter is not None:
+        batim = filter[filter['sector'] == sector]['pv_batiment'].values[0]
+        go.loc[:, header] = 0
+        go.loc[:, batim] = 1
 
     # go['total'] = go.sum(axis=1)
     # floor['total'] = floor.sum(axis=1)
@@ -381,7 +387,6 @@ def get_all_informations(workbook) -> pd.DataFrame:
     contrib_fin['type'] = 'scenarios'
     result = contrib_fin[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
-
 
 
     # result = pd.DataFrame(result, columns=entete)
@@ -989,6 +994,7 @@ def get_ca_characteristic(secteur: list, batiment: list, table_of_intrant: pd.Da
     contrib_fin = contrib_fin[batiment].reset_index(drop=True) * x
     contrib_fin = contrib_fin.where(ntu[batiment] <= 149, 0)
 
+
     table_of_intrant.loc[table_of_intrant['value'] == 'contrib_terr_ss', batiment] = contrib_terr_ss.values
     table_of_intrant.loc[table_of_intrant['value'] == 'contrib_terr_hs', batiment] = contrib_terr_hs.values
     table_of_intrant.loc[table_of_intrant['value'] == 'contrib_fin', batiment] = contrib_fin.values
@@ -1043,11 +1049,14 @@ def get_ca_characteristic(secteur: list, batiment: list, table_of_intrant: pd.Da
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
     value = table_of_intrant[(table_of_intrant['value'].isin(['min_ne', 'max_ne', 'ces_m', 'min_ne_ss', 'max_ne_ss', 'denm_t', 'ntu', 'floor', 'floor_ss', 'dens', 'ntu'])) &
                              (table_of_intrant['category'] == 'ALL')]
+    if len(args) == 0:
+        filter = None
+    else:
+        filter = args[0]
 
     value = pd.concat([value, ces], ignore_index=True)
-
     value.loc[value['value'] == 'max_ne', 'max_ne'] = value['value'].where(value['value'] != 0, 35)
-    result = value[['value'] + batiment].groupby(value['sector']).apply(go_no_go, batiment)
+    result = value[['value'] + batiment].groupby(value['sector']).apply(go_no_go, batiment, filter)
 
     result.loc[:, 'type'] = 'go_no_go'
     result.loc[:, 'category'] = 'ALL'
@@ -1101,6 +1110,9 @@ def get_cb3_characteristic(secteur: list, batiment: list, table_of_intrant: pd.D
         v = np.array(intrant_value[value])
         input = np.multiply(t, v)
         if value == 'max_ne':
+            x = table_of_intrant.loc[table_of_intrant['value'] == value, batiment]
+            input = x.where(x < input, input)
+        elif value == 'denm_p':
             x = table_of_intrant.loc[table_of_intrant['value'] == value, batiment]
             input = x.where(x < input, input)
         table_of_intrant.loc[table_of_intrant['value'] == value, batiment] = input

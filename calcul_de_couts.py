@@ -539,6 +539,9 @@ def calcul_cout_batiment(secteur: list, batiment: list, table_of_intrant: pd.Dat
     # prix_ab['sector'] = price['sector'].reset_index(drop=True)
     # prix_ab['category'] = price['category'].reset_index(drop=True)
     #
+    # price.loc[price['category'] == __UNITE_TYPE__[-1], batiment] = prix_ab.loc[prix_ab['category'] == __UNITE_TYPE__[-1], batiment]
+    # # price.loc[price['category'] != __UNITE_TYPE__[-1], batiment] = 1.12 * price.loc[price['category'] != __UNITE_TYPE__[-1], batiment]
+    #
     # n_3cc = table_of_intrant[(table_of_intrant['value'] == 'ntu') & (table_of_intrant['category'] == __UNITE_TYPE__[-1])]
     # penth = table_of_intrant[(table_of_intrant['value'] == 'ntu') & (table_of_intrant['category'] == __UNITE_TYPE__[4])]
     #
