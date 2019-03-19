@@ -13,6 +13,13 @@ from lexique import __INTRANT_SHEET__, __PRICE_SHEET__, \
 #
 #######################################################################################################################
 
+def get_contribution_financiere(group, d):
+
+    sector = group.loc[:, 'sector'].values[0]
+    di = d[sector]
+    return group.replace(di)
+
+
 
 def ajouter_caraterisque_par_secteur(sh, tab, name, pos, category, unique):
     """
@@ -272,6 +279,7 @@ def get_all_informations(workbook) -> pd.DataFrame:
 
     # TODO: Change for number units and sector
     sh = workbook.sheet_by_name(__PROP_SHEET__)
+
     case = 2
 
     if case == 1:
@@ -359,7 +367,7 @@ def get_all_informations(workbook) -> pd.DataFrame:
 
     contrib_terr_ss = np.array([[sh.cell(i, 8).value for batim in __BATIMENT__] for i in range(29, 36)]) * terr_ss
     contrib_terr_hs = np.array([[sh.cell(i, 8).value for batim in __BATIMENT__] for i in range(40, 47)]) * terr_hs
-    contrib_fin = np.array([[sh.cell(i, 3).value for batim in __BATIMENT__] for i in range(54, 61)]) * terr_ss
+    contrib_fin = np.array([[sect for batim in __BATIMENT__] for sect in __SECTEUR__])
 
     contrib_terr_ss = pd.DataFrame(contrib_terr_ss, columns = __BATIMENT__)
     contrib_terr_ss['category'] = 'ALL'
@@ -980,17 +988,38 @@ def get_ca_characteristic(secteur: list, batiment: list, table_of_intrant: pd.Da
     ################################################################################################
 
     x = (supbtu[batiment].reset_index(drop=True) + supt_cu[batiment].reset_index(drop=True))
+    x['sector'] = supbtu['sector'].reset_index(drop=True)
     contrib_terr_ss = table_of_intrant[(table_of_intrant['value'] == 'contrib_terr_ss')]
     contrib_terr_hs = table_of_intrant[(table_of_intrant['value'] == 'contrib_terr_hs')]
     contrib_fin = table_of_intrant[(table_of_intrant['value'] == 'contrib_fin')]
+    # contrib_fin.groupby('sector').apply(get_contribution_financiere)
 
-    contrib_terr_ss = contrib_terr_ss[batiment].reset_index(drop=True) * x
+    r = pd.DataFrame(None)
+
+    for bati in batiment:
+        r[bati] = pd.cut(x[bati]/10.7639,
+                         [450, 1800, 9000, 13500, 22500],
+                         labels=[1,2,3,4]).values.add_categories(0).fillna(0)
+
+    r['sector'] = contrib_fin[batiment[0]].reset_index(drop=True)
+    d = dict()
+    v = [[20, 35, 65, 100], [15, 35, 65, 100], [20, 45, 90, 130], [30, 60, 115, 175], [35, 70, 145, 215],
+         [35, 70, 145, 215], [40, 75, 155, 230],]
+
+    for s in range(len(__SECTEUR__)):
+        val = v[s]
+        t = dict()
+        for i in range(len(val)):
+            t[i+1] = val[i]
+        d[__SECTEUR__[s]] = t.copy()
+
+    r = r.groupby(x['sector']).apply(get_contribution_financiere, d).reset_index(drop=True)
+
+    contrib_terr_ss = contrib_terr_ss[batiment].reset_index(drop=True) * x[batiment]
     contrib_terr_ss = contrib_terr_ss.where(ntu[batiment] >= 150, 0)
-
-    contrib_terr_hs = contrib_terr_hs[batiment].reset_index(drop=True) * x
+    contrib_terr_hs = contrib_terr_hs[batiment].reset_index(drop=True) * x[batiment]
     contrib_terr_hs = contrib_terr_hs.where(ntu[batiment] >= 150, 0)
-
-    contrib_fin = contrib_fin[batiment].reset_index(drop=True) * x
+    contrib_fin = r[batiment].reset_index(drop=True) * x[batiment] * 0.2
     contrib_fin = contrib_fin.where(ntu[batiment] <= 149, 0)
 
 

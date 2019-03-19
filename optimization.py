@@ -69,7 +69,7 @@ def get_simulations(terrain_dev, scenario):
                                       financials_params=finance_params,
                                       scenario=scenario),
 
-    pool = multiprocessing.Pool(8)
+    pool = multiprocessing.Pool(16)
     result = pool.map(get_summary, params)
     pool.close()
     pool.join()
@@ -528,20 +528,19 @@ if __name__ == '__main__':
 
     # Scenario  5 to 49 units
     # data = read_file('benchmark.npy')
-    # print(data.shape)
     # files = 'scenario 1 5 to 49 units 10%.npy'
     # data = data[(data['Nombre unites'] < 50) & (data['Nombre unites'] >= 5)]
     # data = data[['ID', 'sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne', 'batiment']]
-    # print(data.shape)
     # data.rename(columns={'batiment': 'pv_batiment'}, inplace=True)
     # result = get_simulations(data, True)
     # result = join_result_with_terrain(terrain_dev, result, True, True)
     # result = get_poisson(result)
     # save_file(result, files, [1, 'rem'])
 
+
     # Scenario  50 to 300 units
     # data = read_file('benchmark.npy')
-    # files = 'scenario 1 50 to 300 units 10%.npy'
+    # files = 'scenario 1 50 to 300 units 7%.npy'
     # data = data[(data['Nombre unites'] < 301) & (data['Nombre unites'] >= 50)]
     # data = data[['ID', 'sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne', 'batiment']]
     # data.rename(columns={'batiment': 'pv_batiment'}, inplace=True)
@@ -586,9 +585,9 @@ if __name__ == '__main__':
         write_in_excel_files(benchmark, writer)
         write_in_excel_files(scenario_nrem, writer)
         write_in_excel_files(scenario_rem, writer)
+    #
 
     end = time.time()
-
     print(end - start)
 
 

@@ -532,16 +532,17 @@ def calcul_cout_batiment(secteur: list, batiment: list, table_of_intrant: pd.Dat
     su['type'] = 'cost'
     result = su[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
-    table_of_intrant.loc[table_of_intrant['value'] == 'price', batiment] = 1.1 * table_of_intrant.loc[
-                                                                               table_of_intrant['value'] == 'price', batiment]
+
+    # table_of_intrant.loc[table_of_intrant['value'] == 'price', batiment] = 1.1 * table_of_intrant.loc[
+    #                                                                            table_of_intrant['value'] == 'price', batiment]
     price = table_of_intrant[table_of_intrant['value'] == 'price']
     disct_ab = table_of_intrant[table_of_intrant['value'] == 'disct_ab']
     prix_ab = price[batiment].reset_index(drop=True) * (1 - disct_ab[batiment].reset_index(drop=True))
     prix_ab['sector'] = price['sector'].reset_index(drop=True)
     prix_ab['category'] = price['category'].reset_index(drop=True)
 
-    price.loc[price['category'] == __UNITE_TYPE__[-1], batiment] = prix_ab.loc[prix_ab['category'] == __UNITE_TYPE__[-1], batiment]
-    price.loc[price['category'] != __UNITE_TYPE__[-1], batiment] = 1.10 * price.loc[price['category'] != __UNITE_TYPE__[-1], batiment]
+    price.loc[price['category'] == __UNITE_TYPE__[-1], batiment] = price.loc[price['category'] == __UNITE_TYPE__[-1], batiment] * 0.85
+    price.loc[price['category'] != __UNITE_TYPE__[-1], batiment] = 1.07 * price.loc[price['category'] != __UNITE_TYPE__[-1], batiment]
 
     n_3cc = table_of_intrant[(table_of_intrant['value'] == 'ntu') & (table_of_intrant['category'] == __UNITE_TYPE__[-1])]
     penth = table_of_intrant[(table_of_intrant['value'] == 'ntu') & (table_of_intrant['category'] == __UNITE_TYPE__[4])]
@@ -585,7 +586,7 @@ def calcul_cout_batiment(secteur: list, batiment: list, table_of_intrant: pd.Dat
     price = price.sort_values(['sector', 'category'])
     price.loc[:, batiment] = price_new.sort_values(['sector', 'category'])[batiment].values
     table_of_intrant.loc[table_of_intrant['value'] == 'price', batiment] = price[batiment]
-
+    table_of_intrant.to_excel('t.xlsx')
     return table_of_intrant
 
 
