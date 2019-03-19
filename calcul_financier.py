@@ -660,9 +660,11 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
     sup_bru_one_floor = cost_table[(cost_table['value'] == 'sup_bru_one_floor')]
     cost = cost_table[(cost_table['category'] == 'partial')]
     contrib_terr_ss = cost_table[(cost_table['value'] == 'contrib_terr_ss')]
+    contrib_fin = cost_table[(cost_table['value'] == 'contrib_fin')]
+    contrib_terr_hs = cost_table[(cost_table['value'] == 'contrib_terr_hs')]
 
     cost_total = cost_table[(cost_table['category'] == 'total')]
-    summary = pd.concat([summary, ntu, supbtu, sup_bru_one_floor, cost, cost_total, contrib_terr_ss])
+    summary = pd.concat([summary, ntu, supbtu, sup_bru_one_floor, cost, cost_total, contrib_terr_hs, contrib_fin, contrib_terr_ss])
     summary = summary.groupby(['sector']).apply(format_for_output).reset_index(drop=True)
 
     c = cost_table[(cost_table['value'] == 'ntu') & (cost_table['category'] == 'ALL')]
@@ -704,7 +706,6 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
     result = result.apply(calcul_ecoulement_et_vente, params)
     result = result.reset_index(drop=True)
     financials_result = pd.concat([financials_result, result], axis=1)
-    financials_result.to_excel('t.xlsx')
 
     # 50% des unites construites
     data = finance_params[finance_params['value'] == 'nv_min_prev_av_deb']
@@ -820,7 +821,6 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
 def calculate_financial(type, secteur, batiment, params, timeline, cost, finance_params, *args):
 
     cost_table = calculate_cost(type, secteur, batiment, params, cost, *args)
-    cost_table.to_excel('cost.xlsx')
     return calcul_detail_financier(secteur, batiment, timeline, cost_table, finance_params)
 
 

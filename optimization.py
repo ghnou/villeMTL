@@ -12,7 +12,11 @@ import collections
 import os
 import time
 import multiprocessing
+from scipy.stats import poisson
+from lexique import __FILES_NAME__, __SECTEUR__, __BATIMENT__, __UNITE_TYPE__
+from pathlib import Path
 
+my_path = Path(__file__).parent.resolve()
 data_for_simulation = collections.namedtuple('data_for_simulation', [
     'data',
     'cost_params',
@@ -20,11 +24,148 @@ data_for_simulation = collections.namedtuple('data_for_simulation', [
     'scenario'])
 
 
-from lexique import __FILES_NAME__, __SECTEUR__, __BATIMENT__, __UNITE_TYPE__
+def get_land_informations():
+
+    """Open the files and imports all the land parameters"""
+    couleur_secteur = {}
+
+    couleur = ['Jaune', 'Vert', 'Bleu pâle', 'Bleu', 'Mauve', 'Rouge', 'Noir']
+
+    for pos in range(len(__SECTEUR__)):
+        couleur_secteur[couleur[pos]] = __SECTEUR__[pos]
+
+    terrain_dev = pd.read_excel(__FILES_NAME__, sheet_name='terrains')
+
+    header_dict = {'SuperficieTerrain_Pi2': 'sup_ter', 'COS max formule': 'denm_p', 'couleur': 'sector',
+                   'Valeur terrain p2 PROVISOIRE': 'vat_', 'etages_max': 'max_ne', 'etages_min': 'min_ne'}
+    terrain_dev.rename(columns = header_dict, inplace=True)
+    terrain_dev.loc[:, 'sector'] = terrain_dev['sector'].replace(couleur_secteur)
+
+    terrain_dev['vat'] = terrain_dev[['sector', 'sup_ter', 'denm_p']].apply(lambda row: prix_terrain(*row[['sector', 'denm_p']]), axis = 1)
+
+    terrain_dev = terrain_dev[['ID', 'sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']]
+
+    return terrain_dev
+
+
+def get_simulations(terrain_dev, scenario):
+
+    cost_params = x[(x['type'].isin(['pcost'])) & (x['sector'] == 'Secteur 1')]
+    finance_params = x[(x['type'].isin(['financial'])) & (x['sector'] == 'Secteur 1')]
+
+    terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']).reset_index(drop=True)
+    # print(terr.describe())
+    intervall = np.array_split(terr.index, 16)
+    params = ()
+    # params = data_for_simulation(data=terr.head(25),
+    #                              cost_params=cost_params,
+    #                              financials_params=finance_params,
+    #                              scenario=scenario)
+    # print(get_summary(params))
+    #
+    for value in intervall:
+        params += data_for_simulation(data=terr.loc[value, :],
+                                      cost_params=cost_params,
+                                      financials_params=finance_params,
+                                      scenario=scenario),
+
+    pool = multiprocessing.Pool(8)
+    result = pool.map(get_summary, params)
+    pool.close()
+    pool.join()
+    result = pd.concat(result, ignore_index=True)
+
+    return result
+
+
+def join_result_with_terrain(terrain_dev, data, scenarios, benchmark):
+
+    def best_building(data, to_maximize):
+
+        group = data.copy()
+        group['benef'] = group['revenus totaux'] - group['cout du projet']
+        group = group[group['marge beneficiaire'].fillna(-1000) > 12]
+
+        if group.shape[0] == 0:
+            return group
+        id_ = group[to_maximize].fillna(-1000).idxmax()
+        group = group.loc[id_, :].to_frame().transpose()
+
+        return group
+
+    ##################################################################################################################
+    #
+    # Open Files
+    #
+    ##################################################################################################################
+
+    terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']).reset_index(drop=True)
+
+    # Uncomment this for the filters
+    if not scenarios and benchmark:
+        data = data[(data['Nombre unites'] < 301) & (data['Nombre unites'] > 4)]
+
+    go = data.groupby('sector')['batiment'].count().reset_index()
+    go.rename(columns={'batiment': 'go', 'sector': 'ID'}, inplace=True)
+    go['ID'] = go['ID'].astype(int)
+    terr = pd.merge(terr, go, 'inner', on=['ID'])
+
+    # Get data for the best building Choice
+    to_maximize = 'benef'
+    data.rename(columns={'sector': 'ID'}, inplace=True)
+
+    if scenarios:
+        best_batiment = data
+    else:
+        best_batiment = data.groupby('ID').apply(best_building, to_maximize).reset_index(drop=True).reset_index()
+
+    best_batiment['ID'] = best_batiment['ID'].astype(int)
+    terr = pd.merge(terr, best_batiment, 'inner', on=['ID'])
+    terr.drop(['ID'], axis=1, inplace=True)
+
+    terrain_dev = pd.merge(terrain_dev, terr, 'inner', on=['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne'])
+    terrain_dev['go'] = terrain_dev['go'].fillna(0)
+
+    return terrain_dev
+
+
+def save_file(data, files, *args):
+
+    if files == 'benchmark.npy':
+        d = dict()
+        d['data'] = data
+        d['header'] = data.columns
+        np.save(files, d)
+    elif args[0][1] == 'n_rem' and args[0][0] == 1:
+        path = str(my_path) + '/scenario 1/n_rem/' + files
+        d = dict()
+        d['data'] = data
+        d['header'] = data.columns
+        np.save(path, d)
+    elif args[0][1] == 'rem' and args[0][0] == 1:
+        path = str(my_path) + '/scenario 1/rem/' + files
+        d = dict()
+        d['data'] = data
+        d['header'] = data.columns
+        np.save(path, d)
+
+
+def read_file(files, *args):
+
+    if files == 'benchmark.npy':
+        data = np.load(files).item()
+        return pd.DataFrame(data['data'], columns=data['header'])
+    elif args[0][1] == 'n_rem' and args[0][0] == 1:
+        path = str(my_path) + '/scenario 1/n_rem/' + files
+        data = np.load(path).item()
+        return pd.DataFrame(data['data'], columns=data['header'])
+    elif args[0][1] == 'rem' and args[0][0] == 1:
+        path = str(my_path) + '/scenario 1/n_rem/' + files
+        data = np.load(path).item()
+        return pd.DataFrame(data['data'], columns=data['header'])
 
 
 def prix_terrain(secteur, dens):
-
 
     if secteur == __SECTEUR__[0]:
         return 35 if dens < 1 else 43
@@ -102,30 +243,6 @@ def n(params):
     return value
 
 
-def get_land_informations():
-
-    """Open the files and imports all the land parameters"""
-    couleur_secteur = {}
-
-    couleur = ['Jaune', 'Vert', 'Bleu pâle', 'Bleu', 'Mauve', 'Rouge', 'Noir']
-
-    for pos in range(len(__SECTEUR__)):
-        couleur_secteur[couleur[pos]] = __SECTEUR__[pos]
-
-    terrain_dev = pd.read_excel(__FILES_NAME__, sheet_name='terrains')
-
-    header_dict = {'SuperficieTerrain_Pi2': 'sup_ter', 'COS max formule': 'denm_p', 'couleur': 'sector',
-                   'Valeur terrain p2 PROVISOIRE': 'vat_', 'etages_max': 'max_ne', 'etages_min': 'min_ne'}
-    terrain_dev.rename(columns = header_dict, inplace=True)
-    terrain_dev.loc[:, 'sector'] = terrain_dev['sector'].replace(couleur_secteur)
-
-    terrain_dev['vat'] = terrain_dev[['sector', 'sup_ter', 'denm_p']].apply(lambda row: prix_terrain(*row[['sector', 'denm_p']]), axis = 1)
-
-    terrain_dev = terrain_dev[['ID', 'sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']]
-
-    return terrain_dev
-
-
 def get_summary(params):
 
     print('Start Process: ', os.getpid())
@@ -168,9 +285,7 @@ def get_summary(params):
         ca3 = get_ca_characteristic(cb3['sector'].unique(), __BATIMENT__, cb3, data[['sector', 'pv_batiment']])
     else:
         ca3 = get_ca_characteristic(cb3['sector'].unique(), __BATIMENT__, cb3)
-    # args=dict()
-    # cb3 = get_cb3_characteristic(__SECTEUR__, __BATIMENT__, x, args)
-    # ca3 = get_ca_characteristic(cb3['sector'].unique(), __BATIMENT__, cb3)
+
     print('Intrants completed for process: ', os.getpid())
 
     # Add cost intrants.
@@ -179,392 +294,298 @@ def get_summary(params):
 
     result = calcul_detail_financier(cb3['sector'].unique(), __BATIMENT__, 120, cost_table, financials_params)
     print('Finance completed for process: ', os.getpid())
-    print(result.head(10))
     print('')
 
     # Get financials
     return result
 
 
+def get_poisson(data):
+
+    def residual_land_value(fin_ter, ct_prj, rev_t,  contri):
+
+        ret = 0.12
+        v = (rev_t - (1 + ret) * (ct_prj - fin_ter + contri))/(1 + ret)
+        v = v/(fin_ter - contri)
+        return v
+
+    def calculate_proba(res_val):
+
+        return poisson.cdf(k=5 * res_val, mu=4, loc=0)
+
+    data['residual value'] = data.apply(lambda x: residual_land_value(*x[['financement terrain', 'cout du projet',
+                                                                          'revenus totaux', 'contrib_terr_ss']]), axis=1)
+    data['proba'] = data.apply(lambda x: calculate_proba(*x[['residual value']]), axis=1)
+
+    return data
+
+
+def join_scenario_result(files_name, *args):
+
+    files = 'scenario 1 5 to 49 units'
+    files_ = 'scenario 1 50 to 300 units'
+    for percent in ['', ' 4%', ' 7%', ' 10%']:
+
+        data = read_file(files + percent + '.npy', args[0])
+        data_ = read_file(files_ + percent + '.npy', args[0])
+
+        result = pd.concat([data, data_], ignore_index=True)
+        di = dict()
+        di['header'] = result.columns
+        di['data'] = result
+        save_file(result, files_name + percent, args[0])
+
+
+def put_result_in_panel():
+
+    d = dict()
+
+    def get_strat(sector, batiment):
+        if sector in __SECTEUR__[:2]:
+            if batiment in __BATIMENT__[:3]:
+                return 1
+            if batiment in __BATIMENT__[3:6]:
+                return 2
+            if batiment in __BATIMENT__[6:]:
+                return 2
+        if sector in __SECTEUR__[2:6]:
+            if batiment in __BATIMENT__[:3]:
+                return 4
+            if batiment in __BATIMENT__[3:6]:
+                return 5
+            if batiment in __BATIMENT__[6:]:
+                return 6
+        if sector in __SECTEUR__[6:]:
+            if batiment in __BATIMENT__[:3]:
+                return 7
+            if batiment in __BATIMENT__[3:6]:
+                return 8
+            if batiment in __BATIMENT__[6:]:
+                return 9
+
+    # Benchmark
+    data = np.load('benchmark.npy').item()
+    header = data['header']
+    data = data['data']
+    data = pd.DataFrame(data, columns=header)
+    data['stratification'] = data.apply(lambda x: get_strat(*x[['sector', 'batiment']]), axis=1)
+    data['Expect Nombre unites'] = data['Nombre unites'] * data['proba']
+    data['set'] = 'Small Building'
+    data.loc[data['Nombre unites'] >= 50, 'set'] = 'Big Building'
+    d['Benchmark'] = data.sort_values(['ID'])
+
+    # Market Value
+    for value in ['', ' 4%', ' 7%', ' 10%']:
+        data = np.load('all scenario 1' + value + '.npy').item()
+        header = data['header']
+        data = data['data']
+        data = pd.DataFrame(data, columns=header)
+        data['Social'] = data[['contrib_fin', 'contrib_terr_hs', 'contrib_terr_ss']].sum(axis=1)
+        data['Expect Nombre unites'] = data['Nombre unites'] * data['proba']
+        d['Market Price' + value] = data.sort_values(['ID'])
+
+    return pd.concat(d, axis=1)
+
+
+def get_scenario_impact(data):
+
+    idx = pd.IndexSlice
+    weight_big_building = [0, 0.4, 0, 0, 0.34, 0.1, 0, 0.09, 0.07]
+    weight_small_building = [0.2, 0.4, 0, 0.1, 0.2, 0, 0, 0.1, 0]
+
+    draw = dict()
+    for i in range(len(weight_big_building)):
+        draw[('Big Building', i + 1)] = int(80 * weight_big_building[i])
+    for i in range(len(weight_big_building)):
+        draw[('Small Building', i + 1)] = int(80 * weight_small_building[i])
+
+    def random_draw(group, building, draw):
+        strat = group.name
+        number = draw[(building, strat)]
+        return group.sample(n=number)
+
+    def split_set(group):
+
+        building = group.name
+        t = []
+        for sim in range(1000):
+            r = group.groupby(group['Benchmark', 'stratification']).apply(random_draw, building, draw).reset_index(drop=True)
+            r = r.sum().to_frame().transpose()
+            r['Sample', 'ID'] = 'Sample ' + str(sim + 1)
+            r['building', 'type'] = group.name
+            t.append(r)
+        return pd.concat(t, ignore_index=True)
+
+    data = data.loc[:, idx[:, ['set', 'stratification', 'proba', 'Nombre unites', 'Expect Nombre unites', 'Social']]]
+    data = data.groupby(data['Benchmark', 'set']).apply(split_set).reset_index(drop=True)
+
+    # data.set_index(['building'], inplace=True)
+    data = data.loc[:, idx[:, ['ID', 'Expect Nombre unites', 'Social', 'proba', 'type']]]
+    data.to_excel('t.xlsx')
+    data.loc[:, idx[:, ['Expect Nombre unites', 'Social', 'proba']]].groupby(data['building', 'type']).sum().to_excel('m.xlsx')
+    # data.to_excel('t.xlsx')
+    # print(data)
+
+
+def get_statistics_for_simulation_results(data, name):
+
+    def get_result(data):
+
+        ###############################################################################################################
+        #
+        # Comparaison des carateristiques
+        #
+        ###############################################################################################################
+
+        header = ['sup_ter', 'Nombre unites', 'marge beneficiaire']
+        data[header] = data[header].astype(float)
+        description = 'Distribution des caracterisques pour tous les terrains developpables'
+        distrib_caract = dict()
+        distrib_caract[description + ' (ALL).'] = data[['sup_ter', 'Nombre unites', 'marge beneficiaire']].astype(
+            float).describe().reset_index()
+        for value in [[' (MB > 12%.)', 12], [' (MB > 15%.)', 15], [' (MB > 18%.)', 18], [' (MB > 20%.)', 20]]:
+            distrib_caract[description + value[0]] = data[data['marge beneficiaire'] >= value[1]][header].astype(
+                float).describe().reset_index()
+
+        distrib_caract = pd.concat(distrib_caract).reset_index(drop=True, level=1)
+        distrib_caract = distrib_caract.reset_index()
+        distrib_caract.rename(columns={'index': 'Value', 'level_0': 'Description'}, inplace=True)
+        distrib_caract.set_index(['Description', 'Value'], inplace=True)
+
+        #################################################################################################################
+        #
+        # Distribution des carateristiques
+        #
+        ##################################################################################################################
+
+        distrib_total = data.groupby(['sector', 'batiment'])[['sup_ter', 'marge beneficiaire', 'Nombre unites']].describe()
+
+        #################################################################################################################
+        #
+        # BreakDown nombre unites developpables par secteur
+        #
+        ##################################################################################################################
+
+        terrain_dev = data[['sector', 'batiment', 'marge beneficiaire', 'Nombre unites'] + __UNITE_TYPE__]
+        terrain_dev[__UNITE_TYPE__] = terrain_dev[__UNITE_TYPE__].astype(float)
+
+        x = terrain_dev[terrain_dev['marge beneficiaire'] > 12]
+        bkdu = x.groupby(['sector', 'batiment'])[['Nombre unites'] + __UNITE_TYPE__].sum()
+
+
+        ##################################################################################################################
+        #
+        # Return result
+        #
+        ###################################################################################################################
+
+        return [distrib_caract, distrib_total]
+
+    return [name,
+            get_result(data),
+            get_result(data[(data['Nombre unites'] <= 300) & (data['Nombre unites'] >= 50)]),
+            get_result(data[(data['Nombre unites'] <= 49) & (data['Nombre unites'] >= 5)])]
+
+
+def write_in_excel_files(data, writer):
+
+    data[1][0].to_excel(writer, sheet_name='Comp caract ' + data[0] + ' ALL')
+    data[1][1].to_excel(writer, sheet_name='caract terr ' + data[0] + ' ALL')
+
+    data[2][0].to_excel(writer, sheet_name='Comp caract ' + data[0] + ' 50-300')
+    data[2][1].to_excel(writer, sheet_name='caract terr ' + data[0] + ' 50-300')
+
+    data[3][0].to_excel(writer, sheet_name='Comp caract ' + data[0] + ' 5-49')
+    data[3][1].to_excel(writer, sheet_name='caract ' + data[0] + ' 5-49')
+
+
 global x
 myBook = xlrd.open_workbook(__FILES_NAME__)
 x = get_all_informations(myBook)
 
-def get_stat(terrain_dev, files):
-
-
-    def best_building(data):
-
-        group = data.copy()
-        group['benef'] = group['revenus totaux'] - group['cout du projet']
-        group = group[group['marge beneficiaire'].fillna(-1000) > 12]
-
-        if group.shape[0] == 0:
-            return group[['batiment', 'Nombre unites', 'supbtu', 'sup_bru_one_floor', 'marge beneficiaire', 'TRI'] +
-                         __UNITE_TYPE__]
-        id_ = group['benef'].fillna(-1000).idxmax()
-        group = group.loc[id_, :].to_frame().transpose()
-        group = group[['batiment', 'Nombre unites', 'supbtu', 'sup_bru_one_floor',  'marge beneficiaire', 'TRI'] +
-                      __UNITE_TYPE__]
-
-        return group
-
-    ##################################################################################################################
-    #
-    # Open Files
-    #
-    ##################################################################################################################
-
-    terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']).reset_index(drop=True)
-
-    data = np.load(files).item()
-    header = data['header']
-    data = data['data']
-    data = pd.DataFrame(data, columns=header)
-    # print(data['marge beneficiaire'].describe())
-    # data.to_excel('t1.xlsx')
-    # Uncomment this for the filters
-    # data = data[(data['Nombre unites'] <= 49) & (data['Nombre unites'] > 4)]
-
-    go = data.groupby('sector')['batiment'].count().reset_index()
-    go.rename(columns={'batiment': 'go', 'sector': 'ID'}, inplace=True)
-    go['ID'] = go['ID'].astype(int)
-    terr = pd.merge(terr, go, 'inner', on=['ID'])
-
-    # Get data for the best building Choice
-    best_batiment = data.groupby('sector').apply(best_building).reset_index(level=1, drop=True).reset_index()
-    best_batiment.rename(columns={'sector': 'ID'}, inplace=True)
-    best_batiment['ID'] = best_batiment['ID'].astype(int)
-    terr = pd.merge(terr, best_batiment, 'inner', on=['ID'])
-    terr.drop(['ID'], axis=1, inplace=True)
-
-    terrain_dev = pd.merge(terrain_dev, terr, 'inner', on=['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne'])
-    terrain_dev['go'] = terrain_dev['go'].fillna(0)
-    terrain_dev.to_excel('t1.xlsx')
-
-    header = ['ID', 'go', 'sector', 'batiment', 'sup_ter', 'marge beneficiaire', 'Nombre unites']
-    # Write all the lands results in the files
-    resultat_total = terrain_dev[header]
-    resultat_total = resultat_total[resultat_total['go'] > 0]
-    resultat_total[['sup_ter', 'marge beneficiaire', 'Nombre unites']] = resultat_total[['sup_ter', 'marge beneficiaire', 'Nombre unites']].astype(float)
-    distrib_total = resultat_total.groupby(['sector', 'batiment'])[['sup_ter', 'marge beneficiaire', 'Nombre unites']].describe()
-
-
-    header = ['ID', 'sector', 'sup_ter', 'vat', 'denm_p', 'max_ne', 'min_ne', 'go', 'batiment', 'Nombre unites',
-              'marge beneficiaire', 'TRI']
-
-    x = terrain_dev[terrain_dev['marge beneficiaire'].isna() == False][header]
-    distrib_caract = x[['sup_ter', 'Nombre unites', 'marge beneficiaire']].astype(float).describe().reset_index()
-    distrib_caract['Description'] = 'Distribution des caracterisques pour tous les terrains developpables'
-
-    distrib_caract_ = x[x['marge beneficiaire'].astype(float) > 15][['sup_ter', 'Nombre unites', 'marge beneficiaire']].astype(float).describe().reset_index()
-    distrib_caract_['Description'] = 'Distribution des caracterisques pour tous les terrains de marge beneficiare > 15%.'
-
-    distrib_caract_1 = x[x['marge beneficiaire'].astype(float) > 18][['sup_ter', 'Nombre unites', 'marge beneficiaire']].astype(float).describe().reset_index()
-    distrib_caract_1['Description'] = 'Distribution des caracterisques pour tous les terrains de marge beneficiare > 18%.'
-
-    distrib_caract_2 = x[x['marge beneficiaire'].astype(float) > 20][['sup_ter', 'Nombre unites', 'marge beneficiaire']].astype(float).describe().reset_index()
-    distrib_caract_2['Description'] = 'Distribution des caracterisques pour tous les terrains de marge beneficiare > 20%.'
-
-
-    distrib_caract = pd.concat([distrib_caract, distrib_caract_, distrib_caract_1, distrib_caract_2], ignore_index=True)
-    distrib_caract.rename(columns={'index': 'Value'}, inplace=True)
-    distrib_caract.set_index(['Description', 'Value'], inplace=True)
-
-    x = terrain_dev[terrain_dev['marge beneficiaire'].fillna(-1000) > 12]
-    bkdu = x.groupby(['sector', 'batiment'])[['Nombre unites'] + __UNITE_TYPE__].sum()
-
-    # with pd.ExcelWriter('scenario 50 to 300.xlsx') as writer:  # doctest: +SKIP
-    #     distrib_total.to_excel(writer, sheet_name='Distribution totale')
-    #     distrib_caract.to_excel(writer, sheet_name='Distribution des carac')
-    #     bkdu.to_excel(writer, sheet_name='breakdown by units type')
-
-
-    # d = dict()
-    # d['data'] = terrain_dev
-    # d['header'] = terrain_dev.columns
-    # np.save('benchmark', d)
-
-
-def get_statistics(terrain_dev, files):
-
-    ##################################################################################################################
-    #
-    # Open Files
-    #
-    ##################################################################################################################
-
-    terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']).reset_index(drop=True)
-    data = np.load(files).item()
-    header = data['header']
-    data = data['data']
-    data = pd.DataFrame(data, columns=header)
-
-    # Uncomment this for the filters
-    # data = data[(data['Nombre unites'] <= 50) & (data['Nombre unites'] >0)]
-
-    go = data.groupby('sector')['batiment'].count().reset_index()
-    go.rename(columns={'batiment': 'go', 'sector': 'ID'}, inplace=True)
-    go['ID'] = go['ID'].astype(int)
-    terr = pd.merge(terr, go, 'left', on=['ID'])
-
-    def land_sup(secteur, sup_ter):
-
-        if secteur == __SECTEUR__[0]:
-            return 1 if sup_ter> 3379 and sup_ter <= 145375*1.1 else  0
-
-        elif secteur == __SECTEUR__[1]:
-            return 1 if sup_ter> 2961 and sup_ter <= 23030*1.1 else  0
-
-        elif secteur == __SECTEUR__[2]:
-            return 1 if sup_ter> 2174 and sup_ter <= 21026*1.1 else  0
-
-        elif secteur == __SECTEUR__[3]:
-            return 1 if sup_ter> 1959 and sup_ter <= 21026*1.1 else  0
-
-        elif secteur == __SECTEUR__[4]:
-            return 1 if sup_ter> 1747 and sup_ter <= 21026*1.1 else  0
-
-        elif secteur == __SECTEUR__[5]:
-            return 1 if sup_ter> 1707 and sup_ter <= 17522*1.1 else  0
-
-        elif secteur == __SECTEUR__[6]:
-            return 1 if sup_ter> 1232 and sup_ter <= 16008*1.1 else  0
-
-    def best_building(data):
-
-        group = data.copy()
-        group['benef'] = group['revenus totaux'] - group['cout du projet']
-        group = group[group['marge beneficiaire'].fillna(-1000) > 12]
-
-        if group.shape[0] == 0:
-            return group[['batiment', 'Nombre unites', 'supbtu', 'sup_bru_one_floor', 'marge beneficiaire', 'TRI'] +
-                         __UNITE_TYPE__]
-        id_ = group['benef'].fillna(-1000).idxmax()
-        group = group.loc[id_, :].to_frame().transpose()
-        group = group[['batiment', 'Nombre unites', 'supbtu', 'sup_bru_one_floor',  'marge beneficiaire', 'TRI'] +
-                      __UNITE_TYPE__]
-
-        return group
-
-    def second_building(data):
-        group = data.copy()
-
-        id_ = group['marge beneficiaire'].fillna(-1000).idxmax()
-        group = group[group.index != id_]
-
-        count = group['batiment'].count()
-        header = pd.MultiIndex.from_product([['Second Choix'],
-                                             group.columns])
-        if count > 0:
-            id_ = group['marge beneficiaire'].fillna(-1000).idxmax()
-            group = group.loc[id_, :].to_frame().transpose()
-            group = group[['batiment', 'Nombre unites', 'marge beneficiaire', 'TRI']]
-
-        else:
-            group = group[['batiment', 'Nombre unites', 'marge beneficiaire', 'TRI']]
-
-        return group
-
-    ##################################################################################################################
-    #
-    # Add result to the terain data
-    #
-    ##################################################################################################################
-
-    # Get data for the best building Choice
-    best_batiment = data.groupby('sector').apply(best_building).reset_index(level=1, drop=True).reset_index()
-    best_batiment.rename(columns={'sector': 'ID'}, inplace=True)
-    best_batiment['ID'] = best_batiment['ID'].astype(int)
-    terr = pd.merge(terr, best_batiment, 'left', on=['ID'])
-
-    # Get data for the second building Choice
-    second_batiment = data.groupby('sector').apply(second_building).reset_index(level=1, drop=True).reset_index()
-    second_batiment.rename(columns={'sector': 'ID'}, inplace=True)
-    second_batiment['ID'] = second_batiment['ID'].astype(int)
-    terr = pd.merge(terr, second_batiment, 'left', on=['ID'])
-
-    # TODO: add ID to join for the unique land
-    terrain_dev = pd.merge(terrain_dev, terr, 'left', on=['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne'])
-    terrain_dev['go'] = terrain_dev['go'].fillna(0)
-    terrain_dev.rename(columns={'ID_x': 'ID'}, inplace=True)
-
-    #################################################################################################################
-    #
-    # Write all the land results on Spread sheets
-    #
-    ##################################################################################################################
-
-    header = ['ID', 'sector', 'sup_ter', 'vat', 'denm_p', 'max_ne', 'min_ne', 'go', 'batiment_x', 'Nombre unites_x', 'supbtu', 'sup_bru_one_floor',
-              'marge beneficiaire_x', 'TRI_x', 'batiment_y', 'Nombre unites_y', 'marge beneficiaire_y', 'TRI_y']
-
-    header_val = ['sup_ter', 'vat', 'denm_p', 'max_ne', 'min_ne', 'Nombre unites_x',
-                  'marge beneficiaire_x', 'TRI_x', 'Nombre unites_y', 'marge beneficiaire_y',
-                  'TRI_y']
-    # Write all the lands results in the files
-    resultat_total = terrain_dev[header]
-    resultat_total = resultat_total[resultat_total['go'] > 0]
-    resultat_total[header_val] = resultat_total[header_val].astype(float)
-    terrain_dev[header_val] = terrain_dev[header_val].astype(float)
-    distrib_total = resultat_total.groupby(['sector', 'batiment_x'])[['sup_ter', 'marge beneficiaire_x', 'Nombre unites_x']].describe()
-
-
-     #################################################################################################################
-    #
-    # Distribution des superficie
-    #
-    ##################################################################################################################
-
-    header = ['ID', 'sector', 'sup_ter', 'vat', 'denm_p', 'max_ne', 'min_ne', 'go', 'batiment_x', 'Nombre unites_x',
-              'marge beneficiaire_x', 'TRI_x']
-
-    # terrain_dev = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']).reset_index(drop=True)
-
-    x = terrain_dev[terrain_dev['marge beneficiaire_x'].isna() == False][header]
-    distrib_caract = x[['sup_ter', 'Nombre unites_x', 'marge beneficiaire_x']].astype(float).describe().reset_index()
-    distrib_caract['Description'] = 'Distribution des caracterisques pour tous les terrains developpables'
-
-    distrib_caract_ = x[x['marge beneficiaire_x'].astype(float) > 15][['sup_ter', 'Nombre unites_x', 'marge beneficiaire_x']].astype(float).describe().reset_index()
-    distrib_caract_['Description'] = 'Distribution des caracterisques pour tous les terrains de marge beneficiare > 15%.'
-
-    distrib_caract_1 = x[x['marge beneficiaire_x'].astype(float) > 18][['sup_ter', 'Nombre unites_x', 'marge beneficiaire_x']].astype(float).describe().reset_index()
-    distrib_caract_1['Description'] = 'Distribution des caracterisques pour tous les terrains de marge beneficiare > 18%.'
-
-    distrib_caract_2 = x[x['marge beneficiaire_x'].astype(float) > 20][['sup_ter', 'Nombre unites_x', 'marge beneficiaire_x']].astype(float).describe().reset_index()
-    distrib_caract_2['Description'] = 'Distribution des caracterisques pour tous les terrains de marge beneficiare > 20%.'
-
-    distrib_caract_3 = x[x['marge beneficiaire_x'].astype(float) > 12][
-        ['sup_ter', 'Nombre unites_x', 'marge beneficiaire_x']].astype(float).describe().reset_index()
-    distrib_caract_3[
-        'Description'] = 'Distribution des caracterisques pour tous les terrains de marge beneficiare > 12%.'
-    x = x.sort_values(['marge beneficiaire_x', 'sup_ter'])
-    pd.concat([x.head(50), x.tail(50)], ignore_index=True).to_excel('tail.xlsx')
-
-    distrib_caract = pd.concat([distrib_caract,distrib_caract_3, distrib_caract_, distrib_caract_1, distrib_caract_2], ignore_index=True)
-    distrib_caract.rename(columns={'index': 'Value'}, inplace=True)
-    distrib_caract.set_index(['Description', 'Value'], inplace=True)
-
-    t_ = x[x['marge beneficiaire_x'].astype(float) > 12].groupby('sector')[['sup_ter']].describe().reset_index()
-    t_['Description'] = 'Nombre total de terrain pour MB > 12%'
-
-    t = x[x['marge beneficiaire_x'].astype(float) > 15].groupby('sector')[['sup_ter']].describe().reset_index()
-    t['Description'] = 'Nombre total de terrain pour MB > 15%'
-
-    t_1 = x[x['marge beneficiaire_x'].astype(float) > 18].groupby('sector')[['sup_ter']].describe().reset_index()
-    t_1['Description'] = 'Nombre total de terrain pour MB > 18%'
-
-    t_2 = x[x['marge beneficiaire_x'].astype(float) > 20].groupby('sector')[['sup_ter']].describe().reset_index()
-    t_2['Description'] = 'Nombre total de terrain pour MB > 20%'
-
-    t = pd.concat([t_, t, t_1, t_2], ignore_index=True)
-    t.set_index(['Description', 'sector'], inplace=True)
-
-
-
-     #################################################################################################################
-    #
-    # BreakDown nombre unites developpables par secteur
-    #
-    ##################################################################################################################
-
-    terrain_dev = terrain_dev[['sector', 'batiment_x', 'marge beneficiaire_x', 'Nombre unites_x'] + __UNITE_TYPE__]
-    terrain_dev[__UNITE_TYPE__] = terrain_dev[__UNITE_TYPE__].astype(float)
-
-    x = terrain_dev[terrain_dev['marge beneficiaire_x'].fillna(-1000) > 15]
-    bkdu = x.groupby(['sector', 'batiment_x'])[['Nombre unites_x'] + __UNITE_TYPE__].sum()
-
-
-     #################################################################################################################
-    #
-    # Group number of units per margin
-    #
-    ##################################################################################################################
-
-    # terrain_dev['marge'] = pd.cut(terrain_dev['marge beneficiaire_x'],
-    #                               [terrain_dev['marge beneficiaire_x'].min(), 10, 15, 20, 25, 30, 35, terrain_dev['marge beneficiaire_x'].max()]).values.add_categories('0').fillna(
-    #     '0')
-    #
-    # def get_sum(group):
-    #     data = group.copy()
-    #     data = data.groupby(['marge']).sum().reset_index()
-    #     return data.set_index('marge').transpose()
-    #
-    # terrain_dev = terrain_dev[terrain_dev['marge'] != '0']
-    # gupm = terrain_dev.groupby(['sector', 'batiment_x'])[['Nombre unites_x', 'marge']].apply(get_sum)
-
-    ##################################################################################################################
-    #
-    # Write result in the output files
-    #
-    ###################################################################################################################
-
-    with pd.ExcelWriter('output.xlsx') as writer:  # doctest: +SKIP
-        resultat_total.to_excel(writer, sheet_name='Choix par terrain')
-        distrib_total.to_excel(writer, sheet_name='Distribution totales')
-        distrib_caract.to_excel(writer, sheet_name='Distribution des carac')
-        bkdu.to_excel(writer, sheet_name='breakdown by units type')
-        # gupm.to_excel(writer, sheet_name='Total units per return range')
-        t.to_excel(writer, sheet_name='Stratified')
-
-
-def get_simulations(terrain_dev, scenario, files):
-
-    cost_params = x[(x['type'].isin(['pcost'])) & (x['sector'] == 'Secteur 1')]
-    finance_params = x[(x['type'].isin(['financial'])) & (x['sector'] == 'Secteur 1')]
-
-    print(terrain_dev.groupby('sector')['sector'].count())
-    terr = terrain_dev.drop_duplicates(['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']).reset_index(drop=True)
-    print(terr.describe())
-    intervall = np.array_split(terr.index, 16)
-    params = ()
-    # params = data_for_simulation(data=terr.head(25),
-    #                              cost_params=cost_params,
-    #                              financials_params=finance_params,
-    #                              scenario=scenario)
-    # print(get_summary(params))
-    #
-    for value in intervall:
-        params += data_for_simulation(data=terr.loc[value, :],
-                                     cost_params=cost_params,
-                                     financials_params=finance_params,
-                                      scenario=scenario),
-
-    pool = multiprocessing.Pool(16)
-    result = pool.map(get_summary, params)
-    pool.close()
-    pool.join()
-
-    result = pd.concat(result, ignore_index=True)
-    di = dict()
-
-    di['header'] = result.columns
-    di['data'] = result
-    np.save(files, di)
-
-
 if __name__ == '__main__':
 
     start = time.time()
-
-    # myBook = xlrd.open_workbook(__FILES_NAME__)
-    # x = get_all_informations(myBook)
     terrain_dev = get_land_informations()
-    get_simulations(terrain_dev, False, 'resultat simulation.npy')
 
+    ################################################################################################################
+    #
+    # Make simulation and apply scenario
+    #
+    ################################################################################################################
 
-    data = np.load('resultat simulation.npy').item()
-    header = data['header']
-    data = data['data']
-    data = pd.DataFrame(data, columns=header)
-    print(data.columns)
+    # Get benchmark
+    # result = get_simulations(terrain_dev, False)
+    # result = join_result_with_terrain(terrain_dev, result, False, True)
+    # result = get_poisson(result)
+    # save_file(result, 'benchmark.npy')
+
+    ###############################################################################################################
+    #
+    # Apply scenario
+    #
+    ##############################################################################################################
+
+    # Scenario  5 to 49 units
+    # data = read_file('benchmark.npy')
+    # print(data.shape)
+    # files = 'scenario 1 5 to 49 units 10%.npy'
+    # data = data[(data['Nombre unites'] < 50) & (data['Nombre unites'] >= 5)]
+    # data = data[['ID', 'sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne', 'batiment']]
+    # print(data.shape)
+    # data.rename(columns={'batiment': 'pv_batiment'}, inplace=True)
+    # result = get_simulations(data, True)
+    # result = join_result_with_terrain(terrain_dev, result, True, True)
+    # result = get_poisson(result)
+    # save_file(result, files, [1, 'rem'])
+
+    # Scenario  50 to 300 units
+    # data = read_file('benchmark.npy')
+    # files = 'scenario 1 50 to 300 units 10%.npy'
     # data = data[(data['Nombre unites'] < 301) & (data['Nombre unites'] >= 50)]
-    # data.to_excel('t.xlsx')
     # data = data[['ID', 'sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne', 'batiment']]
     # data.rename(columns={'batiment': 'pv_batiment'}, inplace=True)
-    # get_simulations(data, True, 'scenario 1 50 to 300 units theta.npy')
+    # result = get_simulations(data, True)
+    # result = join_result_with_terrain(terrain_dev, result, True, True)
+    # result = get_poisson(result)
+    # save_file(result, files, [1, 'rem'])
 
-    # terrain_dev = get_land_informations()
-    # get_stat(terrain_dev, 'scenario 1 50 to 300 units.npy')
+    ###############################################################################################################
+    #
+    # Join scenario result
+    #
+    ##############################################################################################################
+
+    # join_scenario_result('scenario 1', [1, 'n_rem'])
+    # join_scenario_result('scenario 1', [1, 'rem'])
+
+    ###############################################################################################################
+    #
+    # Apply scenario
+    #
+    ##############################################################################################################
+
+    # Put all the scenario result in panel
+    # result = put_result_in_panel()
+    # get_scenario_impact(result)
+
+    ###############################################################################################################
+    #
+    # Tear Description sheets
+    #
+    ###############################################################################################################
+
+    benchmark = read_file('benchmark.npy')
+    benchmark = get_statistics_for_simulation_results(benchmark, 'benchmark')
+    scenario_nrem = read_file('scenario 1.npy', [1, 'n_rem'])
+    scenario_nrem = get_statistics_for_simulation_results(scenario_nrem, 'scen no rem')
+    scenario_rem = read_file('scenario 1.npy', [1, 'rem'])
+    scenario_rem = get_statistics_for_simulation_results(scenario_rem, 'scen rem')
+
+    with pd.ExcelWriter('resultat de simulations.xlsx') as writer:  # doctest: +SKIP
+        write_in_excel_files(benchmark, writer)
+        write_in_excel_files(scenario_nrem, writer)
+        write_in_excel_files(scenario_rem, writer)
 
     end = time.time()
 

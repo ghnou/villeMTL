@@ -272,7 +272,7 @@ def get_all_informations(workbook) -> pd.DataFrame:
 
     # TODO: Change for number units and sector
     sh = workbook.sheet_by_name(__PROP_SHEET__)
-    case = 1
+    case = 2
 
     if case == 1:
         # this for 5 to  50 units
@@ -327,7 +327,6 @@ def get_all_informations(workbook) -> pd.DataFrame:
         x.loc[:, 'value'] = 'prop_ab'
         x.loc[x['sector'] == __SECTEUR__[6], __BATIMENT__] = 0.075
         table_of_intrant = pd.concat([table_of_intrant, x[table_of_intrant.columns]])
-    table_of_intrant[table_of_intrant['value'].isin(['pptu', 'ppts'])].to_excel('test.xlsx')
     table_of_intrant['type'] = 'intrants'
 
 
@@ -1070,8 +1069,6 @@ def get_ca_characteristic(secteur: list, batiment: list, table_of_intrant: pd.Da
     ntu = table_of_intrant[mask][['sector'] + batiment]
     ntu.loc[:, batiment] = ntu.where(ntu[batiment] > 0, np.nan)
     table_of_intrant = table_of_intrant.groupby('sector').apply(validate_batiment, ntu).reset_index(drop=True)
-
-    # table_of_intrant.to_excel('test.xlsx')
 
     return table_of_intrant
 
