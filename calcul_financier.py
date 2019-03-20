@@ -58,7 +58,7 @@ def debut_des_ventes(data, dm_1, dm_prev, parc_fee):
     parc = parc_fee[(parc_fee['value'] == 'frais_parc') &
                              (parc_fee['sector'] == sector)][[batiment, 'category']].set_index('category').transpose()
 
-    rem = parc_fee[(parc_fee['value'] == 'rem') &
+    rem = parc_fee[(parc_fee['value'] == 'rem_c') &
                              (parc_fee['sector'] == sector)][[batiment, 'category']].set_index('category').transpose()
 
     contrib_terr_hs = parc_fee[(parc_fee['value'] == 'contrib_terr_hs') &
@@ -694,7 +694,7 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
     dm_prev = finance_params[finance_params['value'] == 'dm_prev']
     t = financials_result[['sector', 'batiment', '1']].groupby(['sector', 'batiment'])
     financials_result[['3', '4', '5', '16', '17', '18']] = t.apply(debut_des_ventes, dm_1, dm_prev,
-                                                 cost_table[cost_table['value'].isin(['rem', 'frais_parc', 'contrib_terr_hs', 'contrib_fin'])]).reset_index(drop=True)
+                                                 cost_table[cost_table['value'].isin(['rem_c', 'frais_parc', 'contrib_terr_hs', 'contrib_fin'])]).reset_index(drop=True)
 
     # Ventes (Ecoulement et revenus bruts)
     result = financials_result[['sector', 'batiment', '3', '4']].groupby(['sector', 'batiment'])
@@ -780,7 +780,6 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
     entete_for_cashflow = ['12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '24', '25', '27', '29', '30', '31']
 
     financials_result['39'] = financials_result[entete_for_cashflow].sum(axis=1)
-
     ###################################################################################################################
     #
     # Key Statistics.

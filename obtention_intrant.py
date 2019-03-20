@@ -7,6 +7,7 @@ from lexique import __INTRANT_SHEET__, __PRICE_SHEET__, \
     __BATIMENT__, __SECTEUR__, __UNITE_TYPE__, __SCENARIO_SHEET__, __FILES_NAME__, __COUT_SHEET__, __QUALITE_BATIMENT__, \
     __ECOULEMENT_SHEET__, __FINANCE_PARAM_SHEET__, __PROP_SHEET__
 
+
 #######################################################################################################################
 #
 # Important Function for the computations
@@ -207,7 +208,7 @@ def go_no_go(group, header, filter):
 #######################################################################################################################
 
 
-def get_all_informations(workbook) -> pd.DataFrame:
+def get_all_informations(workbook, case) -> pd.DataFrame:
 
     """
     this function is used to import all the useful variables to compute caracteristic, cost and finance.
@@ -279,9 +280,6 @@ def get_all_informations(workbook) -> pd.DataFrame:
 
     # TODO: Change for number units and sector
     sh = workbook.sheet_by_name(__PROP_SHEET__)
-
-    case = 2
-
     if case == 1:
         # this for 5 to  50 units
         t = ajouter_caraterisque_par_type_unite(sh, [], 'pptu', [3, 1], False)
@@ -328,12 +326,12 @@ def get_all_informations(workbook) -> pd.DataFrame:
             t.loc[:, 'sector'] = secteur
             table_of_intrant = pd.concat([table_of_intrant, t])
 
-        x = 0.1 * np.ones((len(__SECTEUR__), len(__BATIMENT__)))
+        x = 0.15 * np.ones((len(__SECTEUR__), len(__BATIMENT__)))
         x = pd.DataFrame(x, columns=__BATIMENT__)
         x.loc[:, 'sector'] = __SECTEUR__
         x.loc[:, 'category'] = 'ALL'
         x.loc[:, 'value'] = 'prop_ab'
-        x.loc[x['sector'] == __SECTEUR__[6], __BATIMENT__] = 0.075
+        x.loc[x['sector'] == __SECTEUR__[6], __BATIMENT__] = 0.1
         table_of_intrant = pd.concat([table_of_intrant, x[table_of_intrant.columns]])
     table_of_intrant['type'] = 'intrants'
 

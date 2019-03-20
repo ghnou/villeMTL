@@ -23,7 +23,6 @@ data_for_simulation = collections.namedtuple('data_for_simulation', [
     'financials_params',
     'scenario'])
 
-
 def get_land_informations():
 
     """Open the files and imports all the land parameters"""
@@ -160,7 +159,7 @@ def read_file(files, *args):
         data = np.load(path).item()
         return pd.DataFrame(data['data'], columns=data['header'])
     elif args[0][1] == 'rem' and args[0][0] == 1:
-        path = str(my_path) + '/scenario 1/n_rem/' + files
+        path = str(my_path) + '/scenario 1/rem/' + files
         data = np.load(path).item()
         return pd.DataFrame(data['data'], columns=data['header'])
 
@@ -213,7 +212,7 @@ def get_financials_results(z, *params):
     table_intrant = table_intrant[entete]
     table_intrant.loc[table_intrant['value'] == 'vat', batiment] = vat
 
-    cost_table = calcul_cout_batiment(table_intrant,  secteur, batiment)
+    cost_table = calcul_cout_batiment(table_intrant,  secteur, batiment, CASE, PRICE_INCREASE)
     fin_table = calcul_detail_financier(cost_table, secteur, batiment,  120)
 
     r = fin_table.loc[fin_table[fin_table['value'] == to_optimize].index[0], batiment]
@@ -289,7 +288,7 @@ def get_summary(params):
     print('Intrants completed for process: ', os.getpid())
 
     # Add cost intrants.
-    cost_table = calcul_cout_batiment(cb3['sector'].unique(), __BATIMENT__, ca3, cost_params)
+    cost_table = calcul_cout_batiment(cb3['sector'].unique(), __BATIMENT__, ca3, cost_params, CASE, PRICE_INCREASE)
     print('Cost completed for process: ', os.getpid())
 
     result = calcul_detail_financier(cb3['sector'].unique(), __BATIMENT__, 120, cost_table, financials_params)
@@ -336,9 +335,12 @@ def join_scenario_result(files_name, *args):
         save_file(result, files_name + percent, args[0])
 
 
-def put_result_in_panel():
+def put_result_in_panel(scenarios_files, args):
 
     d = dict()
+    header = {'contrib_fin': 'contribution financiere',
+              'contrib_terr_hs': 'contribution terrain hors sol',
+              'contrib_terr_ss': 'contribution terrain sur sol'}
 
     def get_strat(sector, batiment):
         if sector in __SECTEUR__[:2]:
@@ -347,7 +349,7 @@ def put_result_in_panel():
             if batiment in __BATIMENT__[3:6]:
                 return 2
             if batiment in __BATIMENT__[6:]:
-                return 2
+                return 3
         if sector in __SECTEUR__[2:6]:
             if batiment in __BATIMENT__[:3]:
                 return 4
@@ -364,24 +366,20 @@ def put_result_in_panel():
                 return 9
 
     # Benchmark
-    data = np.load('benchmark.npy').item()
-    header = data['header']
-    data = data['data']
-    data = pd.DataFrame(data, columns=header)
-    data['stratification'] = data.apply(lambda x: get_strat(*x[['sector', 'batiment']]), axis=1)
-    data['Expect Nombre unites'] = data['Nombre unites'] * data['proba']
-    data['set'] = 'Small Building'
-    data.loc[data['Nombre unites'] >= 50, 'set'] = 'Big Building'
-    d['Benchmark'] = data.sort_values(['ID'])
+    benchmark = read_file('benchmark.npy')
+    benchmark['set'] = 'Small Building'
+    benchmark.loc[benchmark['Nombre unites'] >= 50, 'set'] = 'Big Building'
+    benchmark['stratification'] = benchmark.apply(lambda x: get_strat(*x[['sector', 'batiment']]), axis=1)
+    benchmark['Expect Nombre unites'] = benchmark['Nombre unites'] * benchmark['proba']
+    benchmark.rename(columns=header, inplace=True)
+    d['Benchmark'] = benchmark.sort_values(['ID'])
 
     # Market Value
     for value in ['', ' 4%', ' 7%', ' 10%']:
-        data = np.load('all scenario 1' + value + '.npy').item()
-        header = data['header']
-        data = data['data']
-        data = pd.DataFrame(data, columns=header)
+        data = read_file(scenarios_files + value + '.npy', args)
         data['Social'] = data[['contrib_fin', 'contrib_terr_hs', 'contrib_terr_ss']].sum(axis=1)
         data['Expect Nombre unites'] = data['Nombre unites'] * data['proba']
+        data.rename(columns=header, inplace=True)
         d['Market Price' + value] = data.sort_values(['ID'])
 
     return pd.concat(d, axis=1)
@@ -390,18 +388,19 @@ def put_result_in_panel():
 def get_scenario_impact(data):
 
     idx = pd.IndexSlice
-    weight_big_building = [0, 0.4, 0, 0, 0.34, 0.1, 0, 0.09, 0.07]
-    weight_small_building = [0.2, 0.4, 0, 0.1, 0.2, 0, 0, 0.1, 0]
+    weight_big_building = [0, 0.29, 0.1, 0, 0.33, 0.16, 0, 0.06, 0.06]
+    weight_small_building = [0.2, 0.38, 0, 0.12, 0.23, 0, 0.01, 0.06, 0]
 
     draw = dict()
     for i in range(len(weight_big_building)):
-        draw[('Big Building', i + 1)] = int(80 * weight_big_building[i])
+        draw[('Big Building', i + 1)] = int(65 * weight_big_building[i])
     for i in range(len(weight_big_building)):
         draw[('Small Building', i + 1)] = int(80 * weight_small_building[i])
 
     def random_draw(group, building, draw):
         strat = group.name
         number = draw[(building, strat)]
+
         return group.sample(n=number)
 
     def split_set(group):
@@ -416,14 +415,21 @@ def get_scenario_impact(data):
             t.append(r)
         return pd.concat(t, ignore_index=True)
 
-    data = data.loc[:, idx[:, ['set', 'stratification', 'proba', 'Nombre unites', 'Expect Nombre unites', 'Social']]]
+    header = ['set', 'stratification', 'proba', 'Nombre unites', 'Expect Nombre unites', 'Social',
+              'contribution financiere', 'contribution terrain hors sol',  'contribution terrain sur sol',
+              'residual value', 'Nombre unites']
+    data = data.loc[:, idx[:, header]]
     data = data.groupby(data['Benchmark', 'set']).apply(split_set).reset_index(drop=True)
 
     # data.set_index(['building'], inplace=True)
-    data = data.loc[:, idx[:, ['ID', 'Expect Nombre unites', 'Social', 'proba', 'type']]]
-    data.to_excel('t.xlsx')
-    data.loc[:, idx[:, ['Expect Nombre unites', 'Social', 'proba']]].groupby(data['building', 'type']).sum().to_excel('m.xlsx')
-    # data.to_excel('t.xlsx')
+    data = data.loc[:, idx[:, ['ID', 'Expect Nombre unites', 'Social', 'contribution financiere',
+                               'contribution terrain hors sol',  'contribution terrain sur sol',
+                               'residual value', 'type']]]
+    data.set_index(['building']).to_excel('poisson.xlsx')
+
+    data.loc[:, idx[:, ['Expect Nombre unites', 'Social', 'contribution financiere',
+                               'contribution terrain hors sol',  'contribution terrain sur sol',
+                               'residual value']]].groupby(data['building', 'type']).sum().to_excel('total_poisson.xlsx')
     # print(data)
 
 
@@ -499,9 +505,11 @@ def write_in_excel_files(data, writer):
     data[3][1].to_excel(writer, sheet_name='caract ' + data[0] + ' 5-49')
 
 
+CASE = 1
+PRICE_INCREASE = 0
 global x
 myBook = xlrd.open_workbook(__FILES_NAME__)
-x = get_all_informations(myBook)
+x = get_all_informations(myBook, CASE)
 
 if __name__ == '__main__':
 
@@ -537,10 +545,9 @@ if __name__ == '__main__':
     # result = get_poisson(result)
     # save_file(result, files, [1, 'rem'])
 
-
     # Scenario  50 to 300 units
     # data = read_file('benchmark.npy')
-    # files = 'scenario 1 50 to 300 units 7%.npy'
+    # files = 'scenario 1 50 to 300 units 10%.npy'
     # data = data[(data['Nombre unites'] < 301) & (data['Nombre unites'] >= 50)]
     # data = data[['ID', 'sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne', 'batiment']]
     # data.rename(columns={'batiment': 'pv_batiment'}, inplace=True)
@@ -560,12 +567,12 @@ if __name__ == '__main__':
 
     ###############################################################################################################
     #
-    # Apply scenario
+    # Put results in panel
     #
     ##############################################################################################################
 
     # Put all the scenario result in panel
-    # result = put_result_in_panel()
+    # result = put_result_in_panel(scenarios_files='scenario 1', args=[1, 'rem'])
     # get_scenario_impact(result)
 
     ###############################################################################################################
@@ -574,18 +581,17 @@ if __name__ == '__main__':
     #
     ###############################################################################################################
 
-    benchmark = read_file('benchmark.npy')
-    benchmark = get_statistics_for_simulation_results(benchmark, 'benchmark')
-    scenario_nrem = read_file('scenario 1.npy', [1, 'n_rem'])
-    scenario_nrem = get_statistics_for_simulation_results(scenario_nrem, 'scen no rem')
-    scenario_rem = read_file('scenario 1.npy', [1, 'rem'])
-    scenario_rem = get_statistics_for_simulation_results(scenario_rem, 'scen rem')
+    # benchmark = read_file('benchmark.npy')
+    # benchmark = get_statistics_for_simulation_results(benchmark, 'benchmark')
+    # scenario_nrem = read_file('scenario 1.npy', [1, 'n_rem'])
+    # scenario_nrem = get_statistics_for_simulation_results(scenario_nrem, 'scen no rem')
+    # scenario_rem = read_file('scenario 1.npy', [1, 'rem'])
+    # scenario_rem = get_statistics_for_simulation_results(scenario_rem, 'scen rem')
 
-    with pd.ExcelWriter('resultat de simulations.xlsx') as writer:  # doctest: +SKIP
-        write_in_excel_files(benchmark, writer)
-        write_in_excel_files(scenario_nrem, writer)
-        write_in_excel_files(scenario_rem, writer)
-    #
+    # with pd.ExcelWriter('resultat scenario 1 avec rem.xlsx') as writer:  # doctest: +SKIP
+    #     write_in_excel_files(benchmark, writer)
+    #     write_in_excel_files(scenario_nrem, writer)
+    #     write_in_excel_files(scenario_rem, writer)
 
     end = time.time()
     print(end - start)
