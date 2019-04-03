@@ -76,7 +76,7 @@ def debut_des_ventes(data, dm_1, dm_prev, parc_fee):
     group['16'] = 0
     group.loc[:, '17'] = group['17'].where(group['3'].cumsum() != 1, -parc)
     group.loc[:, '18'] = group['18'].where(group['3'].cumsum() != 1, -rem)
-    group.loc[:, '16'] = group['18'].where(group['3'].cumsum() != 1, -contrib_terr_hs -contrib_fin)
+    group.loc[:, '16'] = group['18'].where(group['3'].cumsum() != 1, 0)
     return group[['3', '4', '5', '16', '17', '18']]
 
 
@@ -780,6 +780,7 @@ def calcul_detail_financier(secteur, batiment,  timeline, cost_table, finance_pa
     entete_for_cashflow = ['12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '24', '25', '27', '29', '30', '31']
 
     financials_result['39'] = financials_result[entete_for_cashflow].sum(axis=1)
+
     ###################################################################################################################
     #
     # Key Statistics.

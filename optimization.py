@@ -22,6 +22,8 @@ data_for_simulation = collections.namedtuple('data_for_simulation', [
     'cost_params',
     'financials_params',
     'scenario'])
+global PRICE_INCREASE
+global CASE
 
 def get_land_informations():
 
@@ -42,7 +44,9 @@ def get_land_informations():
 
     terrain_dev['vat'] = terrain_dev[['sector', 'sup_ter', 'denm_p']].apply(lambda row: prix_terrain(*row[['sector', 'denm_p']]), axis = 1)
 
-    terrain_dev = terrain_dev[['ID', 'sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne']]
+    terrain_dev = terrain_dev[['ID', 'sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne',
+                               'Territoire application', 'SecteurREM']]
+
 
     return terrain_dev
 
@@ -83,7 +87,7 @@ def join_result_with_terrain(terrain_dev, data, scenarios, benchmark):
 
         group = data.copy()
         group['benef'] = group['revenus totaux'] - group['cout du projet']
-        group = group[group['marge beneficiaire'].fillna(-1000) > 12]
+        group = group[group['marge beneficiaire'].fillna(-1000) > 13]
 
         if group.shape[0] == 0:
             return group
@@ -125,12 +129,19 @@ def join_result_with_terrain(terrain_dev, data, scenarios, benchmark):
     terrain_dev = pd.merge(terrain_dev, terr, 'inner', on=['sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne'])
     terrain_dev['go'] = terrain_dev['go'].fillna(0)
 
+
+
     return terrain_dev
 
 
 def save_file(data, files, *args):
 
     if files == 'benchmark.npy':
+        d = dict()
+        d['data'] = data
+        d['header'] = data.columns
+        np.save(files, d)
+    elif files == 'benchmark 2.npy':
         d = dict()
         d['data'] = data
         d['header'] = data.columns
@@ -152,6 +163,9 @@ def save_file(data, files, *args):
 def read_file(files, *args):
 
     if files == 'benchmark.npy':
+        data = np.load(files).item()
+        return pd.DataFrame(data['data'], columns=data['header'])
+    elif files == 'benchmark 2.npy':
         data = np.load(files).item()
         return pd.DataFrame(data['data'], columns=data['header'])
     elif args[0][1] == 'n_rem' and args[0][0] == 1:
@@ -286,7 +300,6 @@ def get_summary(params):
         ca3 = get_ca_characteristic(cb3['sector'].unique(), __BATIMENT__, cb3)
 
     print('Intrants completed for process: ', os.getpid())
-
     # Add cost intrants.
     cost_table = calcul_cout_batiment(cb3['sector'].unique(), __BATIMENT__, ca3, cost_params, CASE, PRICE_INCREASE)
     print('Cost completed for process: ', os.getpid())
@@ -303,7 +316,7 @@ def get_poisson(data):
 
     def residual_land_value(fin_ter, ct_prj, rev_t,  contri):
 
-        ret = 0.12
+        ret = 0.13
         v = (rev_t - (1 + ret) * (ct_prj - fin_ter + contri))/(1 + ret)
         v = v/(fin_ter - contri)
         return v
@@ -371,16 +384,27 @@ def put_result_in_panel(scenarios_files, args):
     benchmark.loc[benchmark['Nombre unites'] >= 50, 'set'] = 'Big Building'
     benchmark['stratification'] = benchmark.apply(lambda x: get_strat(*x[['sector', 'batiment']]), axis=1)
     benchmark['Expect Nombre unites'] = benchmark['Nombre unites'] * benchmark['proba']
+    benchmark['Nombre unites'] = benchmark['Nombre unites'].astype(float)
     benchmark.rename(columns=header, inplace=True)
-    d['Benchmark'] = benchmark.sort_values(['ID'])
+    benchmark.sort_values(['ID'])
+    benchmark.set_index(['ID'], inplace=True)
+    d['Benchmark'] = benchmark
+
+    print(benchmark[benchmark['Nombre unites'] < 150]['supbtu'].astype(float).describe())
+
+
 
     # Market Value
-    for value in ['', ' 4%', ' 7%', ' 10%']:
+    for value in ['', ' 4%']:
         data = read_file(scenarios_files + value + '.npy', args)
         data['Social'] = data[['contrib_fin', 'contrib_terr_hs', 'contrib_terr_ss']].sum(axis=1)
         data['Expect Nombre unites'] = data['Nombre unites'] * data['proba']
         data.rename(columns=header, inplace=True)
-        d['Market Price' + value] = data.sort_values(['ID'])
+        data['ID'] = data["ID"].astype(float)
+        data = data.sort_values(['ID'])
+        data.set_index(['ID'], inplace=True)
+        d['Market Price' + value] = data
+
 
     return pd.concat(d, axis=1)
 
@@ -405,6 +429,7 @@ def get_scenario_impact(data):
 
     def split_set(group):
 
+
         building = group.name
         t = []
         for sim in range(1000):
@@ -415,25 +440,25 @@ def get_scenario_impact(data):
             t.append(r)
         return pd.concat(t, ignore_index=True)
 
-    header = ['set', 'stratification', 'proba', 'Nombre unites', 'Expect Nombre unites', 'Social',
-              'contribution financiere', 'contribution terrain hors sol',  'contribution terrain sur sol',
-              'residual value', 'Nombre unites']
+    header = ['ID', 'set',  'Expect Nombre unites', 'Social', 'contribution financiere',
+              'contribution terrain hors sol',  'contribution terrain sur sol', 'stratification']
     data = data.loc[:, idx[:, header]]
+
     data = data.groupby(data['Benchmark', 'set']).apply(split_set).reset_index(drop=True)
 
     # data.set_index(['building'], inplace=True)
-    data = data.loc[:, idx[:, ['ID', 'Expect Nombre unites', 'Social', 'contribution financiere',
+    data = data.loc[:, idx[:, ['Expect Nombre unites', 'Social', 'contribution financiere',
                                'contribution terrain hors sol',  'contribution terrain sur sol',
-                               'residual value', 'type']]]
+                             'type']]]
     data.set_index(['building']).to_excel('poisson.xlsx')
 
     data.loc[:, idx[:, ['Expect Nombre unites', 'Social', 'contribution financiere',
                                'contribution terrain hors sol',  'contribution terrain sur sol',
-                               'residual value']]].groupby(data['building', 'type']).sum().to_excel('total_poisson.xlsx')
-    # print(data)
+                               ]]].groupby(data['building', 'type']).sum().to_excel('total_poisson.xlsx')
+    print(data)
 
 
-def get_statistics_for_simulation_results(data, name):
+def get_statistics_for_simulation_results(data, name, groupby='sector'):
 
     def get_result(data):
 
@@ -464,7 +489,7 @@ def get_statistics_for_simulation_results(data, name):
         #
         ##################################################################################################################
 
-        distrib_total = data.groupby(['sector', 'batiment'])[['sup_ter', 'marge beneficiaire', 'Nombre unites']].describe()
+        distrib_total = data.groupby([groupby, 'batiment'])[['sup_ter', 'marge beneficiaire', 'Nombre unites']].describe()
 
         #################################################################################################################
         #
@@ -505,16 +530,27 @@ def write_in_excel_files(data, writer):
     data[3][1].to_excel(writer, sheet_name='caract ' + data[0] + ' 5-49')
 
 
-CASE = 1
-PRICE_INCREASE = 0
+
+
 global x
 myBook = xlrd.open_workbook(__FILES_NAME__)
-x = get_all_informations(myBook, CASE)
+x = get_all_informations(myBook, 1)
 
 if __name__ == '__main__':
 
     start = time.time()
     terrain_dev = get_land_informations()
+    benchmark = read_file('benchmark.npy')
+
+    terrain_dev.groupby(['sector', 'SecteurREM']).count().to_excel('l.xlsx')
+
+    benchmark = pd.merge(benchmark, terrain_dev[['ID', 'SecteurREM']], on=['ID'])
+    save_file(benchmark, 'benchmark.npy')
+
+    benchmark = read_file('benchmark.npy')
+    benchmark.groupby(['sector', 'SecteurREM']).count().to_excel('t.xlsx')
+
+
 
     ################################################################################################################
     #
@@ -523,10 +559,13 @@ if __name__ == '__main__':
     ################################################################################################################
 
     # Get benchmark
+    # PRICE_INCREASE = 0
+    # CASE = 1
+    #
     # result = get_simulations(terrain_dev, False)
     # result = join_result_with_terrain(terrain_dev, result, False, True)
     # result = get_poisson(result)
-    # save_file(result, 'benchmark.npy')
+    # save_file(result, 'benchmark 2.npy')
 
     ###############################################################################################################
     #
@@ -535,26 +574,37 @@ if __name__ == '__main__':
     ##############################################################################################################
 
     # Scenario  5 to 49 units
-    # data = read_file('benchmark.npy')
-    # files = 'scenario 1 5 to 49 units 10%.npy'
-    # data = data[(data['Nombre unites'] < 50) & (data['Nombre unites'] >= 5)]
-    # data = data[['ID', 'sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne', 'batiment']]
-    # data.rename(columns={'batiment': 'pv_batiment'}, inplace=True)
-    # result = get_simulations(data, True)
-    # result = join_result_with_terrain(terrain_dev, result, True, True)
-    # result = get_poisson(result)
-    # save_file(result, files, [1, 'rem'])
+
+    # incr = [0, 0.04]
+    # title = ['', ' 4%', ' 7%', ' 10%']
+    # for v in range(len(incr)):
+    #     PRICE_INCREASE = incr[v]
+    #     data = read_file('benchmark.npy')
+    #     files = 'scenario 1 5 to 49 units' + title[v] + '.npy'
+    #     data = data[(data['Nombre unites'] < 50) & (data['Nombre unites'] >= 5)]
+    #     data = data[['ID', 'sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne', 'batiment']]
+    #     data.rename(columns={'batiment': 'pv_batiment'}, inplace=True)
+    #     result = get_simulations(data, True)
+    #     result = join_result_with_terrain(terrain_dev, result, True, True)
+    #     result = get_poisson(result)
+    #     save_file(result, files, [1, 'n_rem'])
+
 
     # Scenario  50 to 300 units
     # data = read_file('benchmark.npy')
-    # files = 'scenario 1 50 to 300 units 10%.npy'
     # data = data[(data['Nombre unites'] < 301) & (data['Nombre unites'] >= 50)]
     # data = data[['ID', 'sup_ter', 'denm_p', 'sector', 'vat', 'max_ne', 'min_ne', 'batiment']]
     # data.rename(columns={'batiment': 'pv_batiment'}, inplace=True)
-    # result = get_simulations(data, True)
-    # result = join_result_with_terrain(terrain_dev, result, True, True)
-    # result = get_poisson(result)
-    # save_file(result, files, [1, 'rem'])
+
+    # incr = [0, 0.04]
+    # title = ['', ' 4%', ' 7%', ' 10%']
+    # for v in range(len(incr)):
+    #     PRICE_INCREASE = incr[v]
+    #     files = 'scenario 1 50 to 300 units' + title[v] + '.npy'
+    #     result = get_simulations(data, True)
+    #     result = join_result_with_terrain(terrain_dev, result, True, True)
+    #     result = get_poisson(result)
+    #     save_file(result, files, [1, 'n_rem'])
 
     ###############################################################################################################
     #
@@ -572,7 +622,7 @@ if __name__ == '__main__':
     ##############################################################################################################
 
     # Put all the scenario result in panel
-    # result = put_result_in_panel(scenarios_files='scenario 1', args=[1, 'rem'])
+    # result = put_result_in_panel(scenarios_files='scenario 1', args=[1, 'n_rem'])
     # get_scenario_impact(result)
 
     ###############################################################################################################
@@ -582,13 +632,13 @@ if __name__ == '__main__':
     ###############################################################################################################
 
     # benchmark = read_file('benchmark.npy')
-    # benchmark = get_statistics_for_simulation_results(benchmark, 'benchmark')
+    # benchmark = get_statistics_for_simulation_results(benchmark, 'benchmark', 'Territoire application')
     # scenario_nrem = read_file('scenario 1.npy', [1, 'n_rem'])
     # scenario_nrem = get_statistics_for_simulation_results(scenario_nrem, 'scen no rem')
     # scenario_rem = read_file('scenario 1.npy', [1, 'rem'])
     # scenario_rem = get_statistics_for_simulation_results(scenario_rem, 'scen rem')
 
-    # with pd.ExcelWriter('resultat scenario 1 avec rem.xlsx') as writer:  # doctest: +SKIP
+    # with pd.ExcelWriter('resultat benchmark v2.xlsx') as writer:  # doctest: +SKIP
     #     write_in_excel_files(benchmark, writer)
     #     write_in_excel_files(scenario_nrem, writer)
     #     write_in_excel_files(scenario_rem, writer)

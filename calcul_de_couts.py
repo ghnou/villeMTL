@@ -394,10 +394,15 @@ def calcul_cout_batiment(secteur: list, batiment: list, table_of_intrant: pd.Dat
     table_of_intrant = pd.concat([table_of_intrant, result],ignore_index=True)
 
 
+    #Contribution sociale
+
+    table_of_intrant.loc[table_of_intrant['value'].isin(['contrib_terr_hs', 'contrib_fin', 'contrib_terr_ss']),
+                         ['category', 'type']] = [['unique', 'cost']]
+
     # Total soft Cost
 
     entete_sc = ['apt_geo', 'prof', 'eval', 'legal_fee', 'prof_fee_div', 'pub', 'construction_permit', 'com',
-                 'hon_prom']
+                 'hon_prom', 'contrib_terr_hs', 'contrib_fin']
 
     su = table_of_intrant[(table_of_intrant['value'].isin(entete_sc)) &
                           (table_of_intrant['category'] == 'unique')][['sector'] + batiment].reset_index(drop=True)
@@ -456,15 +461,11 @@ def calcul_cout_batiment(secteur: list, batiment: list, table_of_intrant: pd.Dat
     result = result[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result],ignore_index=True)
 
-    #Contribution sociale
 
-    table_of_intrant.loc[table_of_intrant['value'].isin(['contrib_terr_hs', 'contrib_fin', 'contrib_terr_ss']), ['category', 'type']] = \
-        [['unique', 'cost']]
-
+    # Frais de parc
     supbtu = table_of_intrant[(table_of_intrant['value'] == 'supbtu') & (table_of_intrant['category'] == 'ALL')][
         batiment].reset_index(drop=True)
 
-    # Frais de parc
     sup_parc = table_of_intrant[(table_of_intrant['value'] == 'sup_parc') & (table_of_intrant['category'] == 'ALL')][
         batiment].reset_index(drop=True)
 
@@ -517,7 +518,7 @@ def calcul_cout_batiment(secteur: list, batiment: list, table_of_intrant: pd.Dat
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
 
     # Cout total du projet
-    tot = table_of_intrant[(table_of_intrant['value'].isin(['caq_ter', 'contrib_terr_ss', 'contrib_terr_hs',
+    tot = table_of_intrant[(table_of_intrant['value'].isin(['caq_ter', 'contrib_terr_ss', 'contrib_terr_hs', 'decont'
                                                             'contrib_fin', 'hard cost', 'soft cost', 'frais_parc',
                                                             'rem_c']))][['sector', 'value'] + batiment].reset_index(drop=True)
 
@@ -539,6 +540,8 @@ def calcul_cout_batiment(secteur: list, batiment: list, table_of_intrant: pd.Dat
     su['type'] = 'cost'
     result = su[table_of_intrant.columns]
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
+
+
     if case == 1:
         table_of_intrant.loc[table_of_intrant['value'] == 'price', batiment] = (1 + price_increase) * table_of_intrant.loc[
                                                                                    table_of_intrant['value'] == 'price', batiment]
@@ -594,6 +597,7 @@ def calcul_cout_batiment(secteur: list, batiment: list, table_of_intrant: pd.Dat
         price = price.sort_values(['sector', 'category'])
         price.loc[:, batiment] = price_new.sort_values(['sector', 'category'])[batiment].values
         table_of_intrant.loc[table_of_intrant['value'] == 'price', batiment] = price[batiment]
+
     return table_of_intrant
 
 

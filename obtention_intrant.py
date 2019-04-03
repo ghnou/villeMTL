@@ -5,7 +5,7 @@ import xlrd
 
 from lexique import __INTRANT_SHEET__, __PRICE_SHEET__, \
     __BATIMENT__, __SECTEUR__, __UNITE_TYPE__, __SCENARIO_SHEET__, __FILES_NAME__, __COUT_SHEET__, __QUALITE_BATIMENT__, \
-    __ECOULEMENT_SHEET__, __FINANCE_PARAM_SHEET__, __PROP_SHEET__
+    __ECOULEMENT_SHEET__, __FINANCE_PARAM_SHEET__, __PROP_SHEET__, _DECONTAMIN_
 
 
 #######################################################################################################################
@@ -426,17 +426,6 @@ def get_all_informations(workbook, case) -> pd.DataFrame:
     result.loc[result['sector'] != __SECTEUR__[6], __BATIMENT__] = 'Non'
     table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
 
-    # Decontamination
-    decont = sh.cell(70, 2).value
-    result = -1 * decont * np.ones((7, 8))
-    result = pd.DataFrame(result, columns=__BATIMENT__)
-    result['category'] = 'ALL'
-    result['value'] = 'decont'
-    result['sector'] = __SECTEUR__
-    result = result[entete]
-    result['type'] = 'scenarios'
-    table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
-
 
     tab_of_intrant_pos = [[[80, 2], 'qum'], [[89, 3], 'quf']]
     t = []
@@ -444,8 +433,22 @@ def get_all_informations(workbook, case) -> pd.DataFrame:
         t = ajouter_caraterisque_par_secteur(sh, t, value[1], value[0], 'ALL', False)
     qum = pd.DataFrame(t, columns=entete)
 
+    # # Decontamination
+    # sh = workbook.sheet_by_name(_DECONTAMIN_)
+    # result = ajouter_caraterisque_par_secteur(sh, [], 'decont', [3, 1], 'ALL', False)
+    # xx = ['sector', 'category', 'value'] + __BATIMENT__
+    # result = pd.DataFrame(result, columns=xx)
+    # result.loc[:, __BATIMENT__] = -1 * result.loc[:, __BATIMENT__]
+    # result = result[entete]
+    # result['type'] = 'scenarios'
+    # table_of_intrant = pd.concat([table_of_intrant, result], ignore_index=True)
+
 
     table_of_intrant = get_cb1_characteristic(__SECTEUR__, __BATIMENT__, table_of_intrant)
+
+    ##################################################################################################################
+    #
+    # Decontamination
 
     ###################################################################################################################
     #
@@ -1017,13 +1020,17 @@ def get_ca_characteristic(secteur: list, batiment: list, table_of_intrant: pd.Da
     contrib_terr_ss = contrib_terr_ss.where(ntu[batiment] >= 150, 0)
     contrib_terr_hs = contrib_terr_hs[batiment].reset_index(drop=True) * x[batiment]
     contrib_terr_hs = contrib_terr_hs.where(ntu[batiment] >= 150, 0)
-    contrib_fin = r[batiment].reset_index(drop=True) * x[batiment] * 0.2
+    contrib_fin = r[batiment].reset_index(drop=True) * x[batiment]/10.7639
     contrib_fin = contrib_fin.where(ntu[batiment] <= 149, 0)
 
 
-    table_of_intrant.loc[table_of_intrant['value'] == 'contrib_terr_ss', batiment] = contrib_terr_ss.values
-    table_of_intrant.loc[table_of_intrant['value'] == 'contrib_terr_hs', batiment] = contrib_terr_hs.values
-    table_of_intrant.loc[table_of_intrant['value'] == 'contrib_fin', batiment] = contrib_fin.values
+    # table_of_intrant.loc[table_of_intrant['value'] == 'contrib_terr_ss', batiment] = contrib_terr_ss.values
+    # table_of_intrant.loc[table_of_intrant['value'] == 'contrib_terr_hs', batiment] = contrib_terr_hs.values
+    # table_of_intrant.loc[table_of_intrant['value'] == 'contrib_fin', batiment] = contrib_fin.values
+
+    table_of_intrant.loc[table_of_intrant['value'] == 'contrib_terr_ss', batiment] = 0
+    table_of_intrant.loc[table_of_intrant['value'] == 'contrib_terr_hs', batiment] = 0
+    table_of_intrant.loc[table_of_intrant['value'] == 'contrib_fin', batiment] = 0
 
     # Go No Go
     # --> Floor Hs
